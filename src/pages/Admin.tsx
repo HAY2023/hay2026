@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import StarsBackground from "@/components/StarsBackground";
 import { toast } from "sonner";
-import { ArrowRight, Plus, Trash2, Check, X, Users, BookOpen, FolderOpen } from "lucide-react";
+import { ArrowRight, Plus, Trash2, Check, X, Users, BookOpen, FolderOpen, Sparkles, Loader2 } from "lucide-react";
 
 interface Profile { id: string; user_id: string; display_name: string | null; is_activated: boolean; activation_code: string | null; }
 interface Category { id: string; name: string; icon: string; color: string | null; }
@@ -22,10 +22,14 @@ const Admin = () => {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [selectedCat, setSelectedCat] = useState<string>("");
 
-  // New question form
   const [newQ, setNewQ] = useState({ text: "", type: "multiple_choice", options: ["", "", "", ""], answer: "", timeLimit: 30, catId: "" });
-  // New category
   const [newCat, setNewCat] = useState({ name: "", icon: "📚" });
+
+  // AI generation
+  const [aiTopic, setAiTopic] = useState("");
+  const [aiCount, setAiCount] = useState(5);
+  const [aiType, setAiType] = useState("multiple_choice");
+  const [aiLoading, setAiLoading] = useState(false);
 
   const fetchAll = async () => {
     const [u, c, q] = await Promise.all([
@@ -84,6 +88,53 @@ const Admin = () => {
     fetchAll();
   };
 
+  // AI Generate Questions
+  const generateWithAI = async () => {
+    const catId = newQ.catId || selectedCat;
+    if (!catId) { toast.error("اختر قسماً أولاً"); return; }
+    if (!aiTopic.trim()) { toast.error("اكتب الموضوع"); return; }
+
+    setAiLoading(true);
+    try {
+      const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-questions`;
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
+        body: JSON.stringify({ topic: aiTopic, count: aiCount, type: aiType }),
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json();
+        toast.error(err.error || "حدث خطأ");
+        return;
+      }
+
+      const data = await resp.json();
+      if (!data.questions?.length) { toast.error("لم يتم توليد أسئلة"); return; }
+
+      // Insert generated questions
+      const inserts = data.questions.map((q: any) => ({
+        category_id: catId,
+        question_text: q.question_text,
+        question_type: q.options?.length ? "multiple_choice" : "text",
+        options: q.options?.length ? q.options : null,
+        correct_answer: q.correct_answer,
+        time_limit: q.time_limit || 30,
+      }));
+
+      const { error } = await supabase.from("questions").insert(inserts);
+      if (error) { toast.error("خطأ في حفظ الأسئلة"); return; }
+
+      toast.success(`تم توليد ${inserts.length} سؤال بنجاح!`);
+      setAiTopic("");
+      fetchAll();
+    } catch (e) {
+      toast.error("حدث خطأ في الاتصال");
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   if (loading) return null;
   if (!user || !isAdmin) return <Navigate to="/" replace />;
 
@@ -103,13 +154,13 @@ const Admin = () => {
         <Tabs defaultValue="questions" className="w-full">
           <TabsList className="glass-card w-full justify-start mb-6 p-1">
             <TabsTrigger value="questions" className="gap-1 font-heading"><BookOpen className="w-4 h-4" /> الأسئلة</TabsTrigger>
+            <TabsTrigger value="ai" className="gap-1 font-heading"><Sparkles className="w-4 h-4" /> توليد AI</TabsTrigger>
             <TabsTrigger value="categories" className="gap-1 font-heading"><FolderOpen className="w-4 h-4" /> الأقسام</TabsTrigger>
             <TabsTrigger value="users" className="gap-1 font-heading"><Users className="w-4 h-4" /> المستخدمون</TabsTrigger>
           </TabsList>
 
           {/* Questions Tab */}
           <TabsContent value="questions" className="space-y-4">
-            {/* Add question form */}
             <div className="glass-card p-4 space-y-3">
               <h3 className="font-heading font-bold text-foreground">إضافة سؤال جديد</h3>
               <select
@@ -140,7 +191,6 @@ const Admin = () => {
               <Button onClick={addQuestion} className="gold-gradient text-background gap-1"><Plus className="w-4 h-4" /> إضافة السؤال</Button>
             </div>
 
-            {/* Questions list */}
             <div className="space-y-2">
               {filteredQ.map(q => (
                 <div key={q.id} className="glass-card p-3 flex items-center justify-between">
@@ -151,6 +201,45 @@ const Admin = () => {
                   <Button variant="ghost" size="icon" onClick={() => deleteQuestion(q.id)} className="text-destructive"><Trash2 className="w-4 h-4" /></Button>
                 </div>
               ))}
+            </div>
+          </TabsContent>
+
+          {/* AI Generation Tab */}
+          <TabsContent value="ai" className="space-y-4">
+            <div className="glass-card p-6 space-y-4">
+              <div className="flex items-center gap-2 justify-end">
+                <h3 className="font-heading font-bold gold-text text-xl">توليد أسئلة بالذكاء الاصطناعي</h3>
+                <Sparkles className="w-5 h-5 text-primary" />
+              </div>
+              <p className="text-sm text-muted-foreground text-right">اكتب الموضوع وسيتم توليد أسئلة تلقائياً وإضافتها للقسم المختار</p>
+
+              <select
+                value={newQ.catId || selectedCat}
+                onChange={(e) => { setNewQ(p => ({ ...p, catId: e.target.value })); setSelectedCat(e.target.value); }}
+                className="w-full bg-secondary/50 border border-border/50 rounded-lg p-2 text-foreground text-right"
+              >
+                {categories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
+              </select>
+
+              <Input value={aiTopic} onChange={e => setAiTopic(e.target.value)} placeholder="الموضوع (مثال: عواصم الدول العربية)" className="bg-secondary/50 text-right" />
+
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="text-xs text-muted-foreground">عدد الأسئلة</label>
+                  <Input type="number" value={aiCount} onChange={e => setAiCount(parseInt(e.target.value) || 5)} min={1} max={20} className="bg-secondary/50" />
+                </div>
+                <div className="flex-1">
+                  <label className="text-xs text-muted-foreground">نوع الأسئلة</label>
+                  <select value={aiType} onChange={e => setAiType(e.target.value)} className="w-full bg-secondary/50 border border-border/50 rounded-lg p-2 text-foreground text-right">
+                    <option value="multiple_choice">اختيارات متعددة</option>
+                    <option value="text">كتابة</option>
+                  </select>
+                </div>
+              </div>
+
+              <Button onClick={generateWithAI} disabled={aiLoading} className="w-full gold-gradient text-background gap-2 text-lg py-6">
+                {aiLoading ? <><Loader2 className="w-5 h-5 animate-spin" /> جاري التوليد...</> : <><Sparkles className="w-5 h-5" /> توليد الأسئلة</>}
+              </Button>
             </div>
           </TabsContent>
 
