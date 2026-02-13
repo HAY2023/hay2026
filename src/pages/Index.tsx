@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import StarsBackground from "@/components/StarsBackground";
-import { Brain, LogOut, Settings, Sparkles, Trophy } from "lucide-react";
+import { Brain, LogOut, Settings, Sparkles, Trophy, PenTool, Play } from "lucide-react";
 
 interface Category {
   id: string;
@@ -48,7 +48,7 @@ const Index = () => {
           <div className="flex items-center gap-2">
             {isAdmin && (
               <Button variant="outline" size="sm" onClick={() => navigate("/admin")} className="gap-1">
-                <Settings className="w-4 h-4" /> لوحة التحكم
+                <Settings className="w-4 h-4" /> إدارة الحسابات
               </Button>
             )}
             <Button variant="ghost" size="icon" onClick={signOut}>
@@ -58,47 +58,61 @@ const Index = () => {
         </header>
 
         {/* Hero */}
-        <div className="text-center py-8 px-4">
+        <div className="text-center py-6 md:py-8 px-4">
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 mb-4">
             <Sparkles className="w-4 h-4 text-primary" />
             <span className="text-sm text-primary font-body">مدعوم بالذكاء الاصطناعي</span>
           </div>
           <h2 className="text-3xl md:text-4xl font-heading font-bold gold-text mb-2">اختر قسماً وابدأ التحدي!</h2>
-          <p className="text-muted-foreground">اختبر معلوماتك في مختلف المجالات</p>
+          <p className="text-muted-foreground">اختبر معلوماتك بأسئلتك الخاصة</p>
+        </div>
+
+        {/* Action buttons */}
+        <div className="max-w-4xl mx-auto px-4 mb-6">
+          <div className="grid grid-cols-2 gap-3">
+            <Button onClick={() => navigate("/dashboard")} className="gold-gradient text-background gap-2 h-14 text-base font-heading">
+              <PenTool className="w-5 h-5" /> إدارة أسئلتي
+            </Button>
+            <Button onClick={() => navigate("/results")} variant="outline" className="gap-2 h-14 text-base font-heading">
+              <Trophy className="w-5 h-5" /> نتائجي
+            </Button>
+          </div>
         </div>
 
         {/* Categories grid */}
         <div className="max-w-4xl mx-auto px-4 pb-8">
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {/* Cocktail - all questions */}
-            <button
-              onClick={() => navigate("/play/all")}
-              className="glass-card p-6 text-center hover:border-primary/50 transition-all duration-300 hover:scale-105 animate-glow-pulse col-span-2 md:col-span-3"
-            >
-              <div className="text-4xl mb-2">🍸</div>
-              <h3 className="font-heading text-lg font-bold gold-text">كوكتيل</h3>
-              <p className="text-xs text-muted-foreground">جميع الأقسام</p>
-            </button>
-
-            {categories.map((cat, i) => (
+          {categories.length === 0 ? (
+            <div className="glass-card p-8 text-center">
+              <p className="text-muted-foreground mb-4">لم تضف أي أقسام بعد. أنشئ أقسامك وأسئلتك من لوحة إدارة الأسئلة!</p>
+              <Button onClick={() => navigate("/dashboard")} className="gold-gradient text-background gap-2">
+                <PenTool className="w-4 h-4" /> إنشاء أقسام وأسئلة
+              </Button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              {/* Cocktail - all questions */}
               <button
-                key={cat.id}
-                onClick={() => navigate(`/play/${cat.id}`)}
-                className="glass-card p-6 text-center hover:border-primary/50 transition-all duration-300 hover:scale-105"
-                style={{ animationDelay: `${i * 0.1}s` }}
+                onClick={() => navigate("/play/all")}
+                className="glass-card p-6 text-center hover:border-primary/50 transition-all duration-300 hover:scale-105 animate-glow-pulse col-span-2 md:col-span-3"
               >
-                <div className="text-3xl mb-2">{cat.icon}</div>
-                <h3 className="font-heading text-sm font-bold text-foreground">{cat.name}</h3>
+                <div className="text-4xl mb-2">🍸</div>
+                <h3 className="font-heading text-lg font-bold gold-text">كوكتيل</h3>
+                <p className="text-xs text-muted-foreground">جميع الأقسام</p>
               </button>
-            ))}
-          </div>
 
-          {/* Results button */}
-          <div className="mt-6 text-center">
-            <Button variant="outline" onClick={() => navigate("/results")} className="gap-2">
-              <Trophy className="w-4 h-4" /> نتائجي السابقة
-            </Button>
-          </div>
+              {categories.map((cat, i) => (
+                <button
+                  key={cat.id}
+                  onClick={() => navigate(`/play/${cat.id}`)}
+                  className="glass-card p-6 text-center hover:border-primary/50 transition-all duration-300 hover:scale-105"
+                  style={{ animationDelay: `${i * 0.1}s` }}
+                >
+                  <div className="text-3xl mb-2">{cat.icon}</div>
+                  <h3 className="font-heading text-sm font-bold text-foreground">{cat.name}</h3>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
