@@ -10,6 +10,7 @@ import { Heart, Timer, ArrowLeft, CheckCircle, XCircle, Sparkles, Loader2 } from
 import { toast } from "sonner";
 import confetti from "canvas-confetti";
 
+
 interface Question {
   id: string;
   question_text: string;
@@ -20,6 +21,7 @@ interface Question {
   category_id: string;
 }
 
+// Sound effects using Web Audio API
 const playSound = (type: "correct" | "wrong" | "win" | "lose") => {
   try {
     const ctx = new AudioContext();
@@ -28,28 +30,36 @@ const playSound = (type: "correct" | "wrong" | "win" | "lose") => {
     osc.connect(gain);
     gain.connect(ctx.destination);
     gain.gain.value = 0.15;
+
     if (type === "correct") {
-      osc.frequency.value = 523; osc.start();
+      osc.frequency.value = 523;
+      osc.start();
       setTimeout(() => { osc.frequency.value = 659; }, 100);
       setTimeout(() => { osc.frequency.value = 784; }, 200);
       setTimeout(() => { osc.stop(); ctx.close(); }, 350);
     } else if (type === "wrong") {
-      osc.frequency.value = 300; osc.type = "sawtooth"; osc.start();
+      osc.frequency.value = 300;
+      osc.type = "sawtooth";
+      osc.start();
       setTimeout(() => { osc.frequency.value = 200; }, 150);
       setTimeout(() => { osc.stop(); ctx.close(); }, 400);
     } else if (type === "win") {
-      osc.frequency.value = 523; osc.start();
+      osc.frequency.value = 523;
+      osc.start();
       setTimeout(() => { osc.frequency.value = 659; }, 150);
       setTimeout(() => { osc.frequency.value = 784; }, 300);
       setTimeout(() => { osc.frequency.value = 1047; }, 450);
       setTimeout(() => { osc.stop(); ctx.close(); }, 700);
     } else {
-      osc.frequency.value = 400; osc.type = "sawtooth"; gain.gain.value = 0.1; osc.start();
+      osc.frequency.value = 400;
+      osc.type = "sawtooth";
+      gain.gain.value = 0.1;
+      osc.start();
       setTimeout(() => { osc.frequency.value = 300; }, 200);
       setTimeout(() => { osc.frequency.value = 200; }, 400);
       setTimeout(() => { osc.stop(); ctx.close(); }, 600);
     }
-  } catch { }
+  } catch {}
 };
 
 const fireConfetti = () => {
@@ -81,8 +91,7 @@ const Play = () => {
   useEffect(() => {
     if (!user || !isActivated) return;
     const fetchQ = async () => {
-      // Only fetch user's own questions
-      let query = supabase.from("questions").select("*").eq("created_by", user.id);
+      let query = supabase.from("questions").select("*");
       if (categoryId !== "all") query = query.eq("category_id", categoryId!);
       const { data } = await query;
       if (data && data.length > 0) {
@@ -140,10 +149,12 @@ const Play = () => {
     }
   };
 
+  // Save result & analyze
   useEffect(() => {
     if (!gameOver || !user || questions.length === 0) return;
     const timeTaken = Math.round((Date.now() - startTime) / 1000);
     const pct = parseFloat(((score / questions.length) * 100).toFixed(2));
+
     if (pct >= 70) { fireConfetti(); playSound("win"); }
 
     supabase.from("game_results").insert({
@@ -153,8 +164,9 @@ const Play = () => {
       correct_answers: score,
       score_percentage: pct,
       time_taken: timeTaken,
-    }).then(() => { });
+    }).then(() => {});
 
+    // AI analysis
     setAnalyzing(true);
     const analyzeUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-results`;
     fetch(analyzeUrl, {
@@ -164,7 +176,7 @@ const Play = () => {
     })
       .then((r) => r.json())
       .then((d) => { if (d.analysis) setAiAnalysis(d.analysis); })
-      .catch(() => { })
+      .catch(() => {})
       .finally(() => setAnalyzing(false));
   }, [gameOver]);
 
@@ -195,6 +207,7 @@ const Play = () => {
           <div className="text-5xl font-heading font-bold text-primary my-4">{pct}%</div>
           <p className="text-muted-foreground mb-6">{score} من {questions.length} إجابة صحيحة</p>
 
+          {/* AI Analysis */}
           {analyzing && (
             <div className="flex items-center justify-center gap-2 text-primary mb-4">
               <Loader2 className="w-4 h-4 animate-spin" />

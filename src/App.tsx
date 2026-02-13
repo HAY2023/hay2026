@@ -10,7 +10,6 @@ import Pending from "./pages/Pending";
 import Play from "./pages/Play";
 import Results from "./pages/Results";
 import Admin from "./pages/Admin";
-import Dashboard from "./pages/Dashboard";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -29,7 +28,6 @@ const App = () => (
             <Route path="/play/:categoryId" element={<Play />} />
             <Route path="/results" element={<Results />} />
             <Route path="/admin" element={<Admin />} />
-            <Route path="/dashboard" element={<Dashboard />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
