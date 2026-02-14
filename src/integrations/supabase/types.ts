@@ -18,6 +18,7 @@ export type Database = {
         Row: {
           color: string | null
           created_at: string
+          created_by: string | null
           icon: string | null
           id: string
           name: string
@@ -25,6 +26,7 @@ export type Database = {
         Insert: {
           color?: string | null
           created_at?: string
+          created_by?: string | null
           icon?: string | null
           id?: string
           name: string
@@ -32,6 +34,7 @@ export type Database = {
         Update: {
           color?: string | null
           created_at?: string
+          created_by?: string | null
           icon?: string | null
           id?: string
           name?: string
@@ -114,6 +117,7 @@ export type Database = {
           category_id: string
           correct_answer: string
           created_at: string
+          created_by: string | null
           id: string
           options: Json | null
           question_text: string
@@ -124,6 +128,7 @@ export type Database = {
           category_id: string
           correct_answer: string
           created_at?: string
+          created_by?: string | null
           id?: string
           options?: Json | null
           question_text: string
@@ -134,6 +139,7 @@ export type Database = {
           category_id?: string
           correct_answer?: string
           created_at?: string
+          created_by?: string | null
           id?: string
           options?: Json | null
           question_text?: string
