@@ -5,15 +5,15 @@ import { supabase } from "@/integrations/supabase/client";
 import StarsBackground from "@/components/StarsBackground";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Trophy } from "lucide-react";
+import { motion } from "framer-motion";
 
 interface Result {
-  id: string;
-  total_questions: number;
-  correct_answers: number;
-  score_percentage: number;
-  played_at: string;
-  categories?: { name: string } | null;
+  id: string; total_questions: number; correct_answers: number;
+  score_percentage: number; played_at: string; categories?: { name: string } | null;
 }
+
+const container = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.06 } } };
+const item = { hidden: { opacity: 0, y: 15 }, show: { opacity: 1, y: 0 } };
 
 const Results = () => {
   const { user, isActivated, loading } = useAuth();
@@ -22,12 +22,8 @@ const Results = () => {
 
   useEffect(() => {
     if (!user) return;
-    supabase
-      .from("game_results")
-      .select("*, categories(name)")
-      .eq("user_id", user.id)
-      .order("played_at", { ascending: false })
-      .limit(20)
+    supabase.from("game_results").select("*, categories(name)").eq("user_id", user.id)
+      .order("played_at", { ascending: false }).limit(20)
       .then(({ data }) => { if (data) setResults(data as any); });
   }, [user]);
 
@@ -39,22 +35,23 @@ const Results = () => {
     <div className="min-h-screen relative">
       <StarsBackground />
       <div className="relative z-10 max-w-2xl mx-auto p-4">
-        <div className="flex items-center justify-between mb-6">
+        <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-heading font-bold gold-text flex items-center gap-2">
             <Trophy className="w-6 h-6 text-primary" /> نتائجي
           </h1>
-          <Button variant="ghost" onClick={() => navigate("/")} className="gap-1">
+          <Button variant="ghost" onClick={() => navigate("/")} className="gap-1 rounded-xl">
             <ArrowRight className="w-4 h-4" /> العودة
           </Button>
-        </div>
+        </motion.div>
         {results.length === 0 ? (
-          <div className="glass-card p-8 text-center">
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="glass-card p-10 text-center">
+            <motion.div animate={{ y: [0, -5, 0] }} transition={{ duration: 3, repeat: Infinity }} className="text-5xl mb-3">🎮</motion.div>
             <p className="text-muted-foreground">لم تلعب أي جولة بعد</p>
-          </div>
+          </motion.div>
         ) : (
-          <div className="space-y-3">
+          <motion.div variants={container} initial="hidden" animate="show" className="space-y-3">
             {results.map((r) => (
-              <div key={r.id} className="glass-card p-4 flex items-center justify-between">
+              <motion.div key={r.id} variants={item} className="glass-card-hover p-4 flex items-center justify-between">
                 <div>
                   <p className="font-heading font-bold text-foreground">{r.categories?.name ?? "كوكتيل"}</p>
                   <p className="text-xs text-muted-foreground">{new Date(r.played_at).toLocaleDateString("ar")}</p>
@@ -65,9 +62,9 @@ const Results = () => {
                   </p>
                   <p className="text-xs text-muted-foreground">{r.correct_answers}/{r.total_questions}</p>
                 </div>
-              </div>
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
         )}
       </div>
     </div>
