@@ -141,8 +141,11 @@ const Index = () => {
                   <Heart className={`w-6 h-6 ${n <= livesCount ? "text-destructive fill-destructive" : "text-muted/30"}`} />
                 </button>
               ))}
+              <button onClick={() => setLivesCount(0)} className="mr-2 text-xs px-2 py-1 rounded-lg border border-border/50 text-muted-foreground hover:text-foreground transition-colors">
+                {livesCount === 0 ? "♾️" : "إزالة"}
+              </button>
             </div>
-            <span className="text-sm text-muted-foreground font-body">{livesCount} قلوب</span>
+            <span className="text-sm text-muted-foreground font-body">{livesCount === 0 ? "♾️ بلا حدود" : `${livesCount} قلوب`}</span>
           </div>
         </motion.div>
 
