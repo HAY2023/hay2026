@@ -103,7 +103,7 @@ const Play = () => {
     setShowResult("wrong");
     const newLives = lives - 1;
     setLives(newLives);
-    if (newLives <= 0) {
+    if (initialLives > 0 && newLives <= 0) {
       setTimeout(() => { setGameOver(true); playSound("lose"); }, 1500);
     } else {
       setTimeout(() => nextQuestion(), 1500);
@@ -230,13 +230,18 @@ const Play = () => {
             <ArrowLeft className="w-6 h-6" />
           </button>
           <div className="flex items-center gap-1">
-            {Array.from({ length: initialLives }).map((_, i) => (
-              <motion.div key={i} animate={i >= lives ? { scale: [1, 0.8] } : {}} transition={{ duration: 0.3 }}>
-                <Heart className={`w-6 h-6 transition-colors ${i < lives ? "text-destructive fill-destructive" : "text-muted/30"}`} />
-              </motion.div>
-            ))}
+            {initialLives > 0 ? (
+              Array.from({ length: initialLives }).map((_, i) => (
+                <motion.div key={i} animate={i >= lives ? { scale: [1, 0.8] } : {}} transition={{ duration: 0.3 }}>
+                  <Heart className={`w-6 h-6 transition-colors ${i < lives ? "text-destructive fill-destructive" : "text-muted/30"}`} />
+                </motion.div>
+              ))
+            ) : (
+              <span className="text-lg">♾️</span>
+            )}
           </div>
-          <div className="flex items-center gap-1 font-heading">
+          <div className="flex items-center gap-2 font-heading">
+            <span className="text-sm font-bold text-green-400">{score}/{questions.length}</span>
             <Timer className="w-5 h-5 text-primary" />
             <span className={`text-xl font-bold ${timeLeft <= 5 ? "text-destructive animate-pulse" : "text-primary"}`}>{timeLeft}</span>
           </div>
