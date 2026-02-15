@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import StarsBackground from "@/components/StarsBackground";
-import { Heart, Timer, ArrowLeft, CheckCircle, XCircle, Sparkles, Loader2, ExternalLink } from "lucide-react";
+import MatchingQuestion from "@/components/MatchingQuestion";
+import { Heart, Timer, ArrowLeft, CheckCircle, XCircle, Sparkles, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import confetti from "canvas-confetti";
 import { motion, AnimatePresence } from "framer-motion";
@@ -43,7 +44,7 @@ const playSound = (type: "correct" | "wrong" | "win" | "lose") => {
       setTimeout(() => { osc.frequency.value = 200; }, 400);
       setTimeout(() => { osc.stop(); ctx.close(); }, 600);
     }
-  } catch {}
+  } catch { }
 };
 
 const fireConfetti = () => {
@@ -110,6 +111,11 @@ const Play = () => {
     }
   }, [lives, current, questions.length]);
 
+  const handleCorrect = useCallback(() => {
+    setShowResult("correct"); setScore((p) => p + 1); playSound("correct");
+    setTimeout(() => nextQuestion(), 1200);
+  }, [current, questions.length]);
+
   const nextQuestion = () => {
     setShowResult(null); setAnswer("");
     if (current + 1 >= questions.length) { setGameOver(true); }
@@ -120,9 +126,12 @@ const Play = () => {
     if (showResult) return;
     const correct = questions[current].correct_answer.trim().toLowerCase();
     if (ans.trim().toLowerCase() === correct) {
-      setShowResult("correct"); setScore((p) => p + 1); playSound("correct");
-      setTimeout(() => nextQuestion(), 1200);
+      handleCorrect();
     } else { handleWrong(); }
+  };
+
+  const handleMatchingComplete = (isCorrect: boolean) => {
+    if (isCorrect) { handleCorrect(); } else { handleWrong(); }
   };
 
   useEffect(() => {
@@ -133,14 +142,14 @@ const Play = () => {
     supabase.from("game_results").insert({
       user_id: user.id, category_id: categoryId === "all" ? null : categoryId!,
       total_questions: questions.length, correct_answers: score, score_percentage: pct, time_taken: timeTaken,
-    }).then(() => {});
+    }).then(() => { });
     setAnalyzing(true);
     const analyzeUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-results`;
     fetch(analyzeUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
       body: JSON.stringify({ score, total: questions.length, percentage: pct, categoryName: categoryId === "all" ? null : categoryId, timeTaken }),
-    }).then((r) => r.json()).then((d) => { if (d.analysis) setAiAnalysis(d.analysis); }).catch(() => {}).finally(() => setAnalyzing(false));
+    }).then((r) => r.json()).then((d) => { if (d.analysis) setAiAnalysis(d.analysis); }).catch(() => { }).finally(() => setAnalyzing(false));
   }, [gameOver]);
 
   if (loading || fetchLoading) return (
@@ -169,27 +178,18 @@ const Play = () => {
     return (
       <div className="min-h-screen flex items-center justify-center p-4 relative">
         <StarsBackground />
-        <motion.div
-          initial={{ opacity: 0, y: 30, scale: 0.9 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          transition={{ type: "spring", stiffness: 200 }}
-          className="glass-card p-8 text-center z-10 max-w-md w-full overflow-hidden"
-        >
+        <motion.div initial={{ opacity: 0, y: 30, scale: 0.9 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ type: "spring", stiffness: 200 }}
+          className="glass-card p-8 text-center z-10 max-w-md w-full overflow-hidden">
           <div className="h-px w-full gold-gradient opacity-50 -mt-8 mb-6" />
           <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ duration: 0.5 }} className="text-6xl mb-4">
             {pct >= 80 ? "🏆" : pct >= 50 ? "👏" : "😢"}
           </motion.div>
           <h2 className="text-3xl font-heading font-bold gold-text mb-2">انتهت اللعبة!</h2>
-          <motion.div
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ type: "spring", delay: 0.3 }}
-            className={`text-5xl font-heading font-bold my-4 ${pct >= 80 ? "text-green-400" : pct >= 50 ? "text-primary" : "text-destructive"}`}
-          >
+          <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", delay: 0.3 }}
+            className={`text-5xl font-heading font-bold my-4 ${pct >= 80 ? "text-green-400" : pct >= 50 ? "text-primary" : "text-destructive"}`}>
             {pct}%
           </motion.div>
           <p className="text-muted-foreground mb-6">{score} من {questions.length} إجابة صحيحة</p>
-
           {analyzing && (
             <div className="flex items-center justify-center gap-2 text-primary mb-4">
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -205,7 +205,6 @@ const Play = () => {
               <p className="text-sm text-muted-foreground font-body leading-relaxed whitespace-pre-wrap">{aiAnalysis}</p>
             </motion.div>
           )}
-
           <div className="flex gap-3 justify-center">
             <Button onClick={() => navigate("/")} variant="outline" className="rounded-xl">العودة للرئيسية</Button>
             <motion.div whileTap={{ scale: 0.95 }}>
@@ -219,6 +218,18 @@ const Play = () => {
 
   const q = questions[current];
   const progress = ((current + 1) / questions.length) * 100;
+
+  // Parse matching data
+  let matchingPairs: Record<string, string> = {};
+  let matchingLeft: string[] = [];
+  let matchingRight: string[] = [];
+  if (q.question_type === "matching") {
+    try {
+      matchingPairs = JSON.parse(q.correct_answer);
+      matchingLeft = q.options as string[] || Object.keys(matchingPairs);
+      matchingRight = Object.values(matchingPairs);
+    } catch { matchingLeft = []; matchingRight = []; }
+  }
 
   return (
     <div className="min-h-screen relative">
@@ -252,65 +263,48 @@ const Play = () => {
 
         {/* Question card */}
         <AnimatePresence mode="wait">
-          <motion.div
-            key={current}
-            initial={{ opacity: 0, x: 50 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -50 }}
-            className={`glass-card p-6 md:p-8 mb-6 ${shake ? "animate-shake" : ""}`}
-          >
-            <h2 className="text-xl md:text-2xl font-heading font-bold text-center text-foreground leading-relaxed">
-              {q.question_type === "link" && q.question_text.includes("\n🔗 ") ? (
-                <>
-                  {q.question_text.split("\n🔗 ")[0]}
-                  <a href={q.question_text.split("\n🔗 ")[1]} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 mt-3 text-primary text-base hover:underline">
-                    <ExternalLink className="w-4 h-4" /> افتح الرابط
-                  </a>
-                </>
-              ) : q.question_text}
+          <motion.div key={current} initial={{ opacity: 0, x: 50 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -50 }}
+            className={`glass-card p-6 md:p-8 mb-6 ${shake ? "animate-shake" : ""}`}>
+            <h2 className="text-xl md:text-2xl font-heading font-bold text-center text-foreground leading-relaxed mb-4">
+              {q.question_text}
             </h2>
             {showResult && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className={`mt-4 flex items-center justify-center gap-2 ${showResult === "correct" ? "text-green-400" : "text-destructive"}`}
-              >
-                {showResult === "correct" ? <CheckCircle className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
-                <span className="font-body">{showResult === "correct" ? "إجابة صحيحة!" : `خطأ! الإجابة: ${q.correct_answer}`}</span>
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                className={`mt-4 flex items-center justify-center gap-2 ${showResult === "correct" ? "text-green-400" : "text-destructive"}`}>
+                {showResult === "correct" ? <CheckCircle className="w-5 h-5" /> : <XCircle className="w-5 h-5" /> }
+                <span className="font-body">{showResult === "correct" ? "إجابة صحيحة!" : "خطأ!"}</span>
               </motion.div>
             )}
           </motion.div>
         </AnimatePresence>
 
-        {/* Options */}
-        {q.question_type === "multiple_choice" && q.options ? (
+        {/* Answer area */}
+        {q.question_type === "matching" ? (
+          <MatchingQuestion
+            leftItems={matchingLeft}
+            rightItems={matchingRight}
+            correctPairs={matchingPairs}
+            onComplete={handleMatchingComplete}
+            disabled={!!showResult}
+          />
+        ) : q.question_type === "multiple_choice" && q.options ? (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }} className="grid grid-cols-1 gap-3">
             {(q.options as string[]).map((opt, i) => (
-              <motion.button
-                key={i}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 * i }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => handleAnswer(opt)}
-                disabled={!!showResult}
+              <motion.button key={i} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 * i }}
+                whileTap={{ scale: 0.98 }} onClick={() => handleAnswer(opt)} disabled={!!showResult}
                 className={`glass-card p-4 text-right font-body text-lg transition-all rounded-xl
                   ${!showResult ? "hover:border-primary/50 hover:bg-primary/5 active:scale-[0.98]" : ""}
                   ${showResult && opt.toLowerCase() === q.correct_answer.toLowerCase() ? "border-green-500 bg-green-500/10" : ""}
                   ${showResult === "wrong" && answer === opt ? "border-destructive bg-destructive/10" : ""}
-                  disabled:opacity-70
-                `}
-              >
+                  disabled:opacity-70`}>
                 {opt}
               </motion.button>
             ))}
           </motion.div>
         ) : (
           <form onSubmit={(e) => { e.preventDefault(); handleAnswer(answer); }} className="flex gap-3">
-            <Input
-              value={answer} onChange={(e) => setAnswer(e.target.value)}
-              placeholder="اكتب الإجابة هنا..." className="bg-secondary/50 border-border/50 text-right flex-1 rounded-xl h-12" disabled={!!showResult}
-            />
+            <Input value={answer} onChange={(e) => setAnswer(e.target.value)}
+              placeholder="اكتب الإجابة هنا..." className="bg-secondary/50 border-border/50 text-right flex-1 rounded-xl h-12" disabled={!!showResult} />
             <motion.div whileTap={{ scale: 0.95 }}>
               <Button type="submit" disabled={!!showResult || !answer.trim()} className="gold-gradient text-background rounded-xl h-12">إرسال</Button>
             </motion.div>
