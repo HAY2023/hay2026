@@ -7,14 +7,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import StarsBackground from "@/components/StarsBackground";
+import ExportTools from "@/components/ExportTools";
 import { toast } from "sonner";
-import { ArrowRight, Plus, Trash2, BookOpen, FolderOpen, Sparkles, Loader2 } from "lucide-react";
+import { ArrowRight, Plus, Trash2, BookOpen, FolderOpen, Sparkles, Loader2, Download } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface Category { id: string; name: string; icon: string; color: string | null; created_by: string; }
 interface Question { id: string; question_text: string; question_type: string; options: string[] | null; correct_answer: string; time_limit: number; category_id: string; created_by: string; }
-
-const item = { hidden: { opacity: 0, y: 10 }, show: { opacity: 1, y: 0 } };
 
 const Dashboard = () => {
   const { user, isActivated, loading } = useAuth();
@@ -22,11 +21,12 @@ const Dashboard = () => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [selectedCat, setSelectedCat] = useState("");
-  const [newQ, setNewQ] = useState({ text: "", type: "multiple_choice", options: ["", "", "", ""], answer: "", timeLimit: 30, catId: "", link: "" });
+  const [newQ, setNewQ] = useState({ text: "", type: "multiple_choice", options: ["", "", "", ""], answer: "", timeLimit: 30, catId: "", matchLeft: ["", "", ""], matchRight: ["", "", ""] });
   const [newCat, setNewCat] = useState({ name: "", icon: "📚" });
   const [aiTopic, setAiTopic] = useState("");
   const [aiCount, setAiCount] = useState(5);
   const [aiType, setAiType] = useState("multiple_choice");
+  const [aiLevel, setAiLevel] = useState("متوسط");
   const [aiLoading, setAiLoading] = useState(false);
 
   const fetchAll = async () => {
@@ -58,16 +58,34 @@ const Dashboard = () => {
   const addQuestion = async () => {
     if (!user) return;
     const catId = newQ.catId || selectedCat;
-    if (!catId || !newQ.text.trim() || !newQ.answer.trim()) { toast.error("أكمل جميع الحقول"); return; }
-    const opts = newQ.type === "multiple_choice" ? newQ.options.filter(o => o.trim()) : null;
-    if (newQ.type === "multiple_choice" && (!opts || opts.length < 2)) { toast.error("أضف خيارين على الأقل"); return; }
-    if (newQ.type === "link" && !newQ.link.trim()) { toast.error("أضف الرابط"); return; }
-    const questionText = newQ.type === "link" ? `${newQ.text}\n🔗 ${newQ.link}` : newQ.text;
-    await supabase.from("questions").insert({
-      category_id: catId, question_text: questionText, question_type: newQ.type,
-      options: opts, correct_answer: newQ.answer, time_limit: newQ.timeLimit, created_by: user.id,
-    });
-    setNewQ({ text: "", type: "multiple_choice", options: ["", "", "", ""], answer: "", timeLimit: 30, catId: "", link: "" });
+    if (!catId || !newQ.text.trim()) { toast.error("أكمل جميع الحقول"); return; }
+
+    if (newQ.type === "matching") {
+      const left = newQ.matchLeft.filter(s => s.trim());
+      const right = newQ.matchRight.filter(s => s.trim());
+      if (left.length < 2 || left.length !== right.length) { toast.error("أضف أزواج متساوية (2 على الأقل)"); return; }
+      const pairs: Record<string, string> = {};
+      left.forEach((l, i) => { pairs[l] = right[i]; });
+      await supabase.from("questions").insert({
+        category_id: catId, question_text: newQ.text, question_type: "matching",
+        options: left as any, correct_answer: JSON.stringify(pairs), time_limit: newQ.timeLimit, created_by: user.id,
+      });
+    } else if (newQ.type === "multiple_choice") {
+      if (!newQ.answer.trim()) { toast.error("أكمل الإجابة"); return; }
+      const opts = newQ.options.filter(o => o.trim());
+      if (opts.length < 2) { toast.error("أضف خيارين على الأقل"); return; }
+      await supabase.from("questions").insert({
+        category_id: catId, question_text: newQ.text, question_type: "multiple_choice",
+        options: opts as any, correct_answer: newQ.answer, time_limit: newQ.timeLimit, created_by: user.id,
+      });
+    } else {
+      if (!newQ.answer.trim()) { toast.error("أكمل الإجابة"); return; }
+      await supabase.from("questions").insert({
+        category_id: catId, question_text: newQ.text, question_type: "text",
+        options: null, correct_answer: newQ.answer, time_limit: newQ.timeLimit, created_by: user.id,
+      });
+    }
+    setNewQ({ text: "", type: "multiple_choice", options: ["", "", "", ""], answer: "", timeLimit: 30, catId: "", matchLeft: ["", "", ""], matchRight: ["", "", ""] });
     toast.success("تمت إضافة السؤال");
     fetchAll();
   };
@@ -89,15 +107,15 @@ const Dashboard = () => {
       const resp = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
-        body: JSON.stringify({ topic: aiTopic, count: aiCount, type: aiType }),
+        body: JSON.stringify({ topic: aiTopic, count: aiCount, type: aiType, level: aiLevel }),
       });
       if (!resp.ok) { const err = await resp.json(); toast.error(err.error || "حدث خطأ"); return; }
       const data = await resp.json();
       if (!data.questions?.length) { toast.error("لم يتم توليد أسئلة"); return; }
       const inserts = data.questions.map((q: any) => ({
         category_id: catId, question_text: q.question_text,
-        question_type: q.options?.length ? "multiple_choice" : "text",
-        options: q.options?.length ? q.options : null,
+        question_type: q.matching_pairs ? "matching" : q.options?.length ? "multiple_choice" : "text",
+        options: q.matching_pairs ? q.options : q.options?.length ? q.options : null,
         correct_answer: q.correct_answer, time_limit: q.time_limit || 30, created_by: user.id,
       }));
       const { error } = await supabase.from("questions").insert(inserts);
@@ -114,6 +132,7 @@ const Dashboard = () => {
   if (!isActivated) return <Navigate to="/pending" replace />;
 
   const filteredQ = selectedCat ? questions.filter(q => q.category_id === selectedCat) : questions;
+  const typeLabel = (t: string) => t === "multiple_choice" ? "اختيارات" : t === "matching" ? "🔗 ربط" : "كتابة";
 
   return (
     <div className="min-h-screen relative">
@@ -132,6 +151,7 @@ const Dashboard = () => {
               <TabsTrigger value="questions" className="gap-1 font-heading rounded-lg"><BookOpen className="w-4 h-4" /> الأسئلة</TabsTrigger>
               <TabsTrigger value="ai" className="gap-1 font-heading rounded-lg"><Sparkles className="w-4 h-4" /> توليد AI</TabsTrigger>
               <TabsTrigger value="categories" className="gap-1 font-heading rounded-lg"><FolderOpen className="w-4 h-4" /> الأقسام</TabsTrigger>
+              <TabsTrigger value="export" className="gap-1 font-heading rounded-lg"><Download className="w-4 h-4" /> تصدير</TabsTrigger>
             </TabsList>
 
             {/* Questions Tab */}
@@ -142,23 +162,32 @@ const Dashboard = () => {
                   <p className="text-sm text-muted-foreground">أضف قسماً أولاً من تبويب "الأقسام"</p>
                 ) : (
                   <>
-                    <select
-                      value={newQ.catId || selectedCat}
-                      onChange={(e) => { setNewQ(p => ({ ...p, catId: e.target.value })); setSelectedCat(e.target.value); }}
-                      className="w-full bg-secondary/50 border border-border/50 rounded-xl p-3 text-foreground text-right"
-                    >
+                    <select value={newQ.catId || selectedCat} onChange={(e) => { setNewQ(p => ({ ...p, catId: e.target.value })); setSelectedCat(e.target.value); }}
+                      className="w-full bg-secondary/50 border border-border/50 rounded-xl p-3 text-foreground text-right">
                       {categories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
                     </select>
                     <Textarea value={newQ.text} onChange={e => setNewQ(p => ({ ...p, text: e.target.value }))} placeholder="نص السؤال" className="bg-secondary/50 text-right rounded-xl min-h-[80px]" />
                     <select value={newQ.type} onChange={e => setNewQ(p => ({ ...p, type: e.target.value }))} className="w-full bg-secondary/50 border border-border/50 rounded-xl p-3 text-foreground text-right">
                       <option value="multiple_choice">اختيارات متعددة</option>
                       <option value="text">كتابة</option>
-                      <option value="link">رابط 🔗</option>
+                      <option value="matching">ربط بين جملتين 🔗</option>
                     </select>
                     <AnimatePresence>
-                      {newQ.type === "link" && (
-                        <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="space-y-2">
-                          <Input value={newQ.link} onChange={e => setNewQ(p => ({ ...p, link: e.target.value }))} placeholder="الرابط (مثال: https://example.com)" className="bg-secondary/50 text-left rounded-xl" dir="ltr" />
+                      {newQ.type === "matching" && (
+                        <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="space-y-3">
+                          <p className="text-xs text-muted-foreground text-right">أزواج الربط (يسار ↔ يمين)</p>
+                          {newQ.matchLeft.map((_, i) => (
+                            <div key={i} className="flex gap-2 items-center">
+                              <Input value={newQ.matchLeft[i]} onChange={e => { const ml = [...newQ.matchLeft]; ml[i] = e.target.value; setNewQ(p => ({ ...p, matchLeft: ml })); }}
+                                placeholder={`عنصر ${i + 1}`} className="bg-secondary/50 text-right rounded-xl flex-1" />
+                              <span className="text-primary">↔</span>
+                              <Input value={newQ.matchRight[i]} onChange={e => { const mr = [...newQ.matchRight]; mr[i] = e.target.value; setNewQ(p => ({ ...p, matchRight: mr })); }}
+                                placeholder={`مقابل ${i + 1}`} className="bg-secondary/50 text-right rounded-xl flex-1" />
+                            </div>
+                          ))}
+                          <Button variant="ghost" size="sm" onClick={() => setNewQ(p => ({ ...p, matchLeft: [...p.matchLeft, ""], matchRight: [...p.matchRight, ""] }))} className="text-xs">
+                            <Plus className="w-3 h-3 ml-1" /> إضافة زوج
+                          </Button>
                         </motion.div>
                       )}
                       {newQ.type === "multiple_choice" && (
@@ -170,7 +199,9 @@ const Dashboard = () => {
                         </motion.div>
                       )}
                     </AnimatePresence>
-                    <Input value={newQ.answer} onChange={e => setNewQ(p => ({ ...p, answer: e.target.value }))} placeholder="الإجابة الصحيحة" className="bg-secondary/50 text-right rounded-xl" />
+                    {newQ.type !== "matching" && (
+                      <Input value={newQ.answer} onChange={e => setNewQ(p => ({ ...p, answer: e.target.value }))} placeholder="الإجابة الصحيحة" className="bg-secondary/50 text-right rounded-xl" />
+                    )}
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-muted-foreground">المؤقت (ثانية):</span>
                       <Input type="number" value={newQ.timeLimit} onChange={e => setNewQ(p => ({ ...p, timeLimit: parseInt(e.target.value) || 30 }))} className="w-20 bg-secondary/50 rounded-xl" />
@@ -188,7 +219,7 @@ const Dashboard = () => {
                     <motion.div key={q.id} layout initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="glass-card p-4 flex items-center justify-between gap-3">
                       <div className="flex-1 min-w-0">
                         <p className="font-body text-foreground truncate">{q.question_text}</p>
-                        <p className="text-xs text-muted-foreground">✅ {q.correct_answer} | {q.question_type === "multiple_choice" ? "اختيارات" : q.question_type === "link" ? "🔗 رابط" : "كتابة"}</p>
+                        <p className="text-xs text-muted-foreground">✅ {q.correct_answer.substring(0, 40)} | {typeLabel(q.question_type)}</p>
                       </div>
                       <Button variant="ghost" size="icon" onClick={() => deleteQuestion(q.id)} className="text-destructive shrink-0 rounded-xl"><Trash2 className="w-4 h-4" /></Button>
                     </motion.div>
@@ -213,28 +244,36 @@ const Dashboard = () => {
                       <Sparkles className="w-5 h-5 text-primary" />
                     </motion.div>
                   </div>
+                  <p className="text-xs text-muted-foreground text-right mb-3">🇩🇿 متخصص في المنهج الدراسي الجزائري</p>
                   {categories.length === 0 ? (
                     <p className="text-sm text-muted-foreground text-right">أضف قسماً أولاً من تبويب "الأقسام"</p>
                   ) : (
                     <>
-                      <select
-                        value={newQ.catId || selectedCat}
-                        onChange={(e) => { setNewQ(p => ({ ...p, catId: e.target.value })); setSelectedCat(e.target.value); }}
-                        className="w-full bg-secondary/50 border border-border/50 rounded-xl p-3 text-foreground text-right"
-                      >
+                      <select value={newQ.catId || selectedCat} onChange={(e) => { setNewQ(p => ({ ...p, catId: e.target.value })); setSelectedCat(e.target.value); }}
+                        className="w-full bg-secondary/50 border border-border/50 rounded-xl p-3 text-foreground text-right">
                         {categories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
                       </select>
-                      <Input value={aiTopic} onChange={e => setAiTopic(e.target.value)} placeholder="الموضوع (مثال: عواصم الدول العربية)" className="bg-secondary/50 text-right rounded-xl h-12" />
-                      <div className="flex gap-3">
-                        <div className="flex-1">
-                          <label className="text-xs text-muted-foreground block mb-1">عدد الأسئلة</label>
+                      <Input value={aiTopic} onChange={e => setAiTopic(e.target.value)} placeholder="الموضوع (مثال: تاريخ ثورة التحرير الجزائرية)" className="bg-secondary/50 text-right rounded-xl h-12" />
+                      <div className="grid grid-cols-3 gap-3">
+                        <div>
+                          <label className="text-xs text-muted-foreground block mb-1">العدد</label>
                           <Input type="number" value={aiCount} onChange={e => setAiCount(parseInt(e.target.value) || 5)} min={1} max={20} className="bg-secondary/50 rounded-xl" />
                         </div>
-                        <div className="flex-1">
-                          <label className="text-xs text-muted-foreground block mb-1">نوع الأسئلة</label>
-                          <select value={aiType} onChange={e => setAiType(e.target.value)} className="w-full bg-secondary/50 border border-border/50 rounded-xl p-2.5 text-foreground text-right">
-                            <option value="multiple_choice">اختيارات متعددة</option>
+                        <div>
+                          <label className="text-xs text-muted-foreground block mb-1">النوع</label>
+                          <select value={aiType} onChange={e => setAiType(e.target.value)} className="w-full bg-secondary/50 border border-border/50 rounded-xl p-2.5 text-foreground text-right text-sm">
+                            <option value="multiple_choice">اختيارات</option>
                             <option value="text">كتابة</option>
+                            <option value="matching">ربط</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs text-muted-foreground block mb-1">المستوى</label>
+                          <select value={aiLevel} onChange={e => setAiLevel(e.target.value)} className="w-full bg-secondary/50 border border-border/50 rounded-xl p-2.5 text-foreground text-right text-sm">
+                            <option value="ابتدائي">ابتدائي</option>
+                            <option value="متوسط">متوسط</option>
+                            <option value="ثانوي">ثانوي</option>
+                            <option value="جامعي">جامعي</option>
                           </select>
                         </div>
                       </div>
@@ -273,6 +312,25 @@ const Dashboard = () => {
                     <p className="text-muted-foreground text-sm">لا توجد أقسام بعد. أضف قسماً للبدء!</p>
                   </div>
                 )}
+              </div>
+            </TabsContent>
+
+            {/* Export Tab */}
+            <TabsContent value="export" className="space-y-4">
+              <div className="glass-card p-6 space-y-4">
+                <h3 className="font-heading font-bold text-foreground text-right">تصدير الأسئلة</h3>
+                <p className="text-sm text-muted-foreground text-right">اختر القسم وصدّر أسئلتك بالصيغة المطلوبة</p>
+                {categories.length > 0 && (
+                  <select value={selectedCat} onChange={e => setSelectedCat(e.target.value)}
+                    className="w-full bg-secondary/50 border border-border/50 rounded-xl p-3 text-foreground text-right">
+                    <option value="">جميع الأقسام</option>
+                    {categories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
+                  </select>
+                )}
+                <div className="flex gap-3 justify-center">
+                  <ExportTools questions={questions} categories={categories} selectedCat={selectedCat} />
+                </div>
+                <p className="text-xs text-muted-foreground text-center">{filteredQ.length} سؤال متاح للتصدير</p>
               </div>
             </TabsContent>
           </Tabs>

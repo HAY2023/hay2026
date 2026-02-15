@@ -9,11 +9,30 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { topic, count, type } = await req.json();
+    const { topic, count, type, level } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
-    const questionType = type === "text" ? "كتابة (بدون خيارات)" : "اختيار من متعدد (4 خيارات)";
+    const levelMap: Record<string, string> = {
+      "ابتدائي": "مستوى ابتدائي (سن 6-11)",
+      "متوسط": "مستوى متوسط (سن 11-15)",
+      "ثانوي": "مستوى ثانوي وبكالوريا (سن 15-18)",
+      "جامعي": "مستوى جامعي",
+    };
+    const levelText = levelMap[level] || "جميع المستويات";
+
+    let questionType = "اختيار من متعدد (4 خيارات)";
+    let extraInstructions = "";
+    
+    if (type === "text") {
+      questionType = "كتابة (بدون خيارات)";
+    } else if (type === "matching") {
+      questionType = "ربط بين جملتين";
+      extraInstructions = `لأسئلة الربط: أنشئ أزواجاً من العناصر المتطابقة.
+      في حقل options ضع العناصر في العمود الأيسر (مثلاً: ["الجزائر", "تونس", "المغرب"])
+      في حقل correct_answer ضع الأزواج الصحيحة بصيغة JSON مثل: {"الجزائر":"الدينار","تونس":"الدينار","المغرب":"الدرهم"}
+      في حقل matching_pairs ضع العناصر في العمود الأيمن (مثلاً: ["الدينار", "الدرهم", "الدينار"])`;
+    }
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -26,11 +45,14 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: `أنت مولد أسئلة اختبارات باللغة العربية. أنشئ أسئلة دقيقة وممتعة.`
+            content: `أنت مولد أسئلة اختبارات تعليمية باللغة العربية متخصص في المنهج الدراسي الجزائري.
+ركّز على المواضيع المتعلقة بالتعليم في الجزائر والمنهج الجزائري.
+أنشئ أسئلة دقيقة وتعليمية ومناسبة للمستوى المطلوب.
+${extraInstructions}`
           },
           {
             role: "user",
-            content: `أنشئ ${count || 5} أسئلة عن موضوع "${topic}" من نوع ${questionType}. 
+            content: `أنشئ ${count || 5} أسئلة عن موضوع "${topic}" من نوع ${questionType} لمستوى ${levelText}.
             
 كل سؤال يجب أن يكون بهذا الشكل بالضبط.`
           }
@@ -40,7 +62,7 @@ serve(async (req) => {
             type: "function",
             function: {
               name: "generate_questions",
-              description: "Generate quiz questions in Arabic",
+              description: "Generate quiz questions in Arabic for Algerian curriculum",
               parameters: {
                 type: "object",
                 properties: {
@@ -50,9 +72,10 @@ serve(async (req) => {
                       type: "object",
                       properties: {
                         question_text: { type: "string", description: "نص السؤال بالعربية" },
-                        options: { type: "array", items: { type: "string" }, description: "4 خيارات (فقط لأسئلة الاختيار المتعدد)" },
-                        correct_answer: { type: "string", description: "الإجابة الصحيحة" },
-                        time_limit: { type: "number", description: "المؤقت بالثواني (15-60)" }
+                        options: { type: "array", items: { type: "string" }, description: "4 خيارات (اختيار متعدد) أو عناصر العمود الأيسر (ربط)" },
+                        correct_answer: { type: "string", description: "الإجابة الصحيحة أو JSON للأزواج (ربط)" },
+                        time_limit: { type: "number", description: "المؤقت بالثواني (15-60)" },
+                        matching_pairs: { type: "array", items: { type: "string" }, description: "عناصر العمود الأيمن (فقط لأسئلة الربط)" }
                       },
                       required: ["question_text", "correct_answer", "time_limit"],
                       additionalProperties: false
