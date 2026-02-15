@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
-import { useParams, useNavigate, Navigate } from "react-router-dom";
+import { useParams, useNavigate, Navigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import StarsBackground from "@/components/StarsBackground";
-import { Heart, Timer, ArrowLeft, CheckCircle, XCircle, Sparkles, Loader2 } from "lucide-react";
+import { Heart, Timer, ArrowLeft, CheckCircle, XCircle, Sparkles, Loader2, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import confetti from "canvas-confetti";
 import { motion, AnimatePresence } from "framer-motion";
@@ -56,11 +56,13 @@ const fireConfetti = () => {
 
 const Play = () => {
   const { categoryId } = useParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user, isActivated, loading } = useAuth();
+  const initialLives = parseInt(searchParams.get("lives") || "3", 10);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [current, setCurrent] = useState(0);
-  const [lives, setLives] = useState(3);
+  const [lives, setLives] = useState(initialLives);
   const [score, setScore] = useState(0);
   const [timeLeft, setTimeLeft] = useState(30);
   const [answer, setAnswer] = useState("");
@@ -228,7 +230,7 @@ const Play = () => {
             <ArrowLeft className="w-6 h-6" />
           </button>
           <div className="flex items-center gap-1">
-            {Array.from({ length: 3 }).map((_, i) => (
+            {Array.from({ length: initialLives }).map((_, i) => (
               <motion.div key={i} animate={i >= lives ? { scale: [1, 0.8] } : {}} transition={{ duration: 0.3 }}>
                 <Heart className={`w-6 h-6 transition-colors ${i < lives ? "text-destructive fill-destructive" : "text-muted/30"}`} />
               </motion.div>
@@ -253,7 +255,14 @@ const Play = () => {
             className={`glass-card p-6 md:p-8 mb-6 ${shake ? "animate-shake" : ""}`}
           >
             <h2 className="text-xl md:text-2xl font-heading font-bold text-center text-foreground leading-relaxed">
-              {q.question_text}
+              {q.question_type === "link" && q.question_text.includes("\n🔗 ") ? (
+                <>
+                  {q.question_text.split("\n🔗 ")[0]}
+                  <a href={q.question_text.split("\n🔗 ")[1]} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 mt-3 text-primary text-base hover:underline">
+                    <ExternalLink className="w-4 h-4" /> افتح الرابط
+                  </a>
+                </>
+              ) : q.question_text}
             </h2>
             {showResult && (
               <motion.div

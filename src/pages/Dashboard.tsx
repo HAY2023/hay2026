@@ -22,7 +22,7 @@ const Dashboard = () => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [selectedCat, setSelectedCat] = useState("");
-  const [newQ, setNewQ] = useState({ text: "", type: "multiple_choice", options: ["", "", "", ""], answer: "", timeLimit: 30, catId: "" });
+  const [newQ, setNewQ] = useState({ text: "", type: "multiple_choice", options: ["", "", "", ""], answer: "", timeLimit: 30, catId: "", link: "" });
   const [newCat, setNewCat] = useState({ name: "", icon: "📚" });
   const [aiTopic, setAiTopic] = useState("");
   const [aiCount, setAiCount] = useState(5);
@@ -61,11 +61,13 @@ const Dashboard = () => {
     if (!catId || !newQ.text.trim() || !newQ.answer.trim()) { toast.error("أكمل جميع الحقول"); return; }
     const opts = newQ.type === "multiple_choice" ? newQ.options.filter(o => o.trim()) : null;
     if (newQ.type === "multiple_choice" && (!opts || opts.length < 2)) { toast.error("أضف خيارين على الأقل"); return; }
+    if (newQ.type === "link" && !newQ.link.trim()) { toast.error("أضف الرابط"); return; }
+    const questionText = newQ.type === "link" ? `${newQ.text}\n🔗 ${newQ.link}` : newQ.text;
     await supabase.from("questions").insert({
-      category_id: catId, question_text: newQ.text, question_type: newQ.type,
+      category_id: catId, question_text: questionText, question_type: newQ.type,
       options: opts, correct_answer: newQ.answer, time_limit: newQ.timeLimit, created_by: user.id,
     });
-    setNewQ({ text: "", type: "multiple_choice", options: ["", "", "", ""], answer: "", timeLimit: 30, catId: "" });
+    setNewQ({ text: "", type: "multiple_choice", options: ["", "", "", ""], answer: "", timeLimit: 30, catId: "", link: "" });
     toast.success("تمت إضافة السؤال");
     fetchAll();
   };
@@ -151,8 +153,14 @@ const Dashboard = () => {
                     <select value={newQ.type} onChange={e => setNewQ(p => ({ ...p, type: e.target.value }))} className="w-full bg-secondary/50 border border-border/50 rounded-xl p-3 text-foreground text-right">
                       <option value="multiple_choice">اختيارات متعددة</option>
                       <option value="text">كتابة</option>
+                      <option value="link">رابط 🔗</option>
                     </select>
                     <AnimatePresence>
+                      {newQ.type === "link" && (
+                        <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="space-y-2">
+                          <Input value={newQ.link} onChange={e => setNewQ(p => ({ ...p, link: e.target.value }))} placeholder="الرابط (مثال: https://example.com)" className="bg-secondary/50 text-left rounded-xl" dir="ltr" />
+                        </motion.div>
+                      )}
                       {newQ.type === "multiple_choice" && (
                         <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="grid grid-cols-2 gap-2">
                           {newQ.options.map((o, i) => (
@@ -180,7 +188,7 @@ const Dashboard = () => {
                     <motion.div key={q.id} layout initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="glass-card p-4 flex items-center justify-between gap-3">
                       <div className="flex-1 min-w-0">
                         <p className="font-body text-foreground truncate">{q.question_text}</p>
-                        <p className="text-xs text-muted-foreground">✅ {q.correct_answer} | {q.question_type === "multiple_choice" ? "اختيارات" : "كتابة"}</p>
+                        <p className="text-xs text-muted-foreground">✅ {q.correct_answer} | {q.question_type === "multiple_choice" ? "اختيارات" : q.question_type === "link" ? "🔗 رابط" : "كتابة"}</p>
                       </div>
                       <Button variant="ghost" size="icon" onClick={() => deleteQuestion(q.id)} className="text-destructive shrink-0 rounded-xl"><Trash2 className="w-4 h-4" /></Button>
                     </motion.div>

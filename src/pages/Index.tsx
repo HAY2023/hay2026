@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import StarsBackground from "@/components/StarsBackground";
-import { Brain, LogOut, Settings, Sparkles, Trophy, PenTool, PlayCircle, Zap } from "lucide-react";
+import { Brain, LogOut, Settings, Sparkles, Trophy, PenTool, PlayCircle, Zap, Heart } from "lucide-react";
 import { motion } from "framer-motion";
 
 interface Category {
@@ -28,6 +28,7 @@ const Index = () => {
   const { user, isActivated, isAdmin, loading, signOut, profile } = useAuth();
   const navigate = useNavigate();
   const [categories, setCategories] = useState<Category[]>([]);
+  const [livesCount, setLivesCount] = useState(3);
 
   useEffect(() => {
     if (user && isActivated) {
@@ -126,6 +127,25 @@ const Index = () => {
           </div>
         </motion.div>
 
+        {/* Lives selector */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.35 }}
+          className="max-w-lg mx-auto px-4 mb-6"
+        >
+          <div className="glass-card p-4 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {[1, 2, 3, 4, 5].map(n => (
+                <button key={n} onClick={() => setLivesCount(n)} className="transition-transform hover:scale-110">
+                  <Heart className={`w-6 h-6 ${n <= livesCount ? "text-destructive fill-destructive" : "text-muted/30"}`} />
+                </button>
+              ))}
+            </div>
+            <span className="text-sm text-muted-foreground font-body">{livesCount} قلوب</span>
+          </div>
+        </motion.div>
+
         {/* Categories grid */}
         <div className="max-w-lg mx-auto px-4 pb-10">
           {categories.length === 0 ? (
@@ -150,7 +170,7 @@ const Index = () => {
                 variants={item}
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.97 }}
-                onClick={() => navigate("/play/all")}
+                onClick={() => navigate(`/play/all?lives=${livesCount}`)}
                 className="glass-card-hover p-6 text-center col-span-2 relative overflow-hidden group"
               >
                 <div className="absolute inset-0 gold-gradient opacity-5 group-hover:opacity-10 transition-opacity" />
@@ -171,7 +191,7 @@ const Index = () => {
                   variants={item}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  onClick={() => navigate(`/play/${cat.id}`)}
+                  onClick={() => navigate(`/play/${cat.id}?lives=${livesCount}`)}
                   className="glass-card-hover p-5 text-center"
                 >
                   <div className="text-3xl mb-2">{cat.icon}</div>
