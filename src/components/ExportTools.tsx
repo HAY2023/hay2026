@@ -111,22 +111,26 @@ const ExportTools = ({ questions, categories, selectedCat }: ExportToolsProps) =
         if (q.question_type === "multiple_choice" && q.options) {
           const opts = q.options as string[];
           opts.forEach((opt, oi) => {
-            const isCorrect = opt.trim().toLowerCase() === q.correct_answer.trim().toLowerCase();
             const col = oi % 2 === 0 ? 0.5 : 6.8;
             const row = oi < 2 ? 3.5 : 4.5;
-            slide.addText(opt, {
+            const labels = ["أ", "ب", "ج", "د"];
+            slide.addText(`${labels[oi] || ""}) ${opt}`, {
               x: col, y: row, w: 5.5, h: 0.8,
-              fontSize: 18, color: isCorrect ? "4ade80" : "FFFFFF",
-              fill: { color: isCorrect ? "1a3a2e" : "2a2a4e" },
+              fontSize: 18, color: "FFFFFF",
+              fill: { color: "2a2a4e" },
               align: "center", fontFace: "Arial", rtlMode: true,
             });
           });
-        } else {
-          // Answer for text/matching
-          slide.addText(`✅ ${q.correct_answer}`, {
+        } else if (q.question_type === "text") {
+          slide.addText("...........................................", {
             x: 0.5, y: 3.5, w: "90%", h: 0.8,
-            fontSize: 20, color: "4ade80", align: "center", fontFace: "Arial", rtlMode: true,
-            fill: { color: "1a3a2e" },
+            fontSize: 20, color: "888888", align: "center", fontFace: "Arial",
+          });
+        } else {
+          // matching - show items without pairing
+          slide.addText("صل بين العمود الأيمن والعمود الأيسر", {
+            x: 0.5, y: 3.5, w: "90%", h: 0.8,
+            fontSize: 18, color: "D4AF37", align: "center", fontFace: "Arial", rtlMode: true,
           });
         }
       });
