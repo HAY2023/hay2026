@@ -1,20 +1,55 @@
+import { useState } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import StarsBackground from "@/components/StarsBackground";
-import { Clock, LogOut, RefreshCw } from "lucide-react";
+import { Clock, LogOut, RefreshCw, KeyRound, Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
+import { toast } from "sonner";
 
 const Pending = () => {
   const { user, isActivated, loading, signOut } = useAuth();
+  const [code, setCode] = useState("");
+  const [checking, setChecking] = useState(false);
 
   if (loading) return null;
   if (!user) return <Navigate to="/auth" replace />;
   if (isActivated) return <Navigate to="/" replace />;
 
-  const handleRefresh = () => {
-    window.location.reload();
+  const handleRefresh = () => window.location.reload();
+
+  const handleActivate = async () => {
+    if (!code.trim()) { toast.error("أدخل كود التفعيل"); return; }
+    // Validate format XXXXX-XXXXX-MM-YY
+    const pattern = /^[A-Za-z0-9]{5}-[A-Za-z0-9]{5}-\d{2}-\d{2}$/;
+    if (!pattern.test(code.trim())) {
+      toast.error("صيغة الكود غير صحيحة (XXXXX-XXXXX-12-26)");
+      return;
+    }
+    setChecking(true);
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, activation_code")
+        .eq("user_id", user.id)
+        .single();
+      
+      if (error || !data) { toast.error("حدث خطأ"); setChecking(false); return; }
+
+      if (data.activation_code === code.trim()) {
+        await supabase.from("profiles").update({ is_activated: true }).eq("id", data.id);
+        toast.success("تم تفعيل حسابك بنجاح! 🎉");
+        setTimeout(() => window.location.reload(), 1000);
+      } else {
+        toast.error("كود التفعيل غير صحيح");
+      }
+    } catch {
+      toast.error("حدث خطأ في التحقق");
+    }
+    setChecking(false);
   };
 
   return (
@@ -42,6 +77,36 @@ const Pending = () => {
             <p className="text-muted-foreground font-body leading-relaxed">
               تم إنشاء حسابك بنجاح. يرجى انتظار تفعيل الأدمن لحسابك أو إدخال كود التفعيل.
             </p>
+
+            {/* Activation Code Input */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 justify-center text-sm text-muted-foreground">
+                <KeyRound className="w-4 h-4 text-primary" />
+                <span>أدخل كود التفعيل</span>
+              </div>
+              <Input
+                value={code}
+                onChange={e => setCode(e.target.value)}
+                placeholder="XXXXX-XXXXX-12-26"
+                className="bg-secondary/50 text-center rounded-xl h-12 text-lg tracking-wider font-mono"
+                dir="ltr"
+              />
+              <motion.div whileTap={{ scale: 0.97 }}>
+                <Button
+                  onClick={handleActivate}
+                  disabled={checking}
+                  className="w-full gold-gradient text-background gap-2 rounded-xl shadow-lg shadow-primary/15"
+                >
+                  {checking ? <><Loader2 className="w-4 h-4 animate-spin" /> جاري التحقق...</> : <><KeyRound className="w-4 h-4" /> تفعيل بالكود</>}
+                </Button>
+              </motion.div>
+            </div>
+
+            <div className="relative my-2">
+              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-border/50" /></div>
+              <div className="relative flex justify-center text-xs"><span className="bg-card px-3 text-muted-foreground">أو</span></div>
+            </div>
+
             <div className="flex gap-3 justify-center">
               <Button variant="outline" onClick={handleRefresh} className="gap-2 rounded-xl">
                 <RefreshCw className="w-4 h-4" /> تحديث

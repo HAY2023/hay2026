@@ -9,7 +9,7 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { topic, count, type, level } = await req.json();
+    const { topic, count, type, level, aiMode } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
@@ -34,6 +34,24 @@ serve(async (req) => {
       في حقل matching_pairs ضع العناصر في العمود الأيمن (مثلاً: ["الدينار", "الدرهم", "الدينار"])`;
     }
 
+    const isAlgerian = aiMode === "algerian";
+
+    const systemPrompt = isAlgerian
+      ? `أنت مولد أسئلة اختبارات تعليمية باللغة العربية متخصص حصرياً في المنهج الدراسي الجزائري.
+ركّز فقط على المواضيع المتعلقة بالتعليم في الجزائر والمنهج الجزائري الرسمي.
+استخدم المصطلحات والمفاهيم المعتمدة في الكتب المدرسية الجزائرية.
+أنشئ أسئلة دقيقة وتعليمية ومناسبة للمستوى المطلوب حسب البرنامج الجزائري.
+${extraInstructions}`
+      : `أنت مولد أسئلة اختبارات تعليمية قوي ومتقدم باللغة العربية.
+أنشئ أسئلة عميقة ودقيقة وشاملة عن أي موضوع.
+ركّز على الجودة العالية والتنوع في الأسئلة مع تغطية جوانب مختلفة من الموضوع.
+اجعل الأسئلة تحفّز التفكير النقدي والتحليلي.
+${extraInstructions}`;
+
+    const userPrompt = isAlgerian
+      ? `أنشئ ${count || 5} أسئلة عن موضوع "${topic}" من نوع ${questionType} لمستوى ${levelText} حسب المنهج الدراسي الجزائري.\n\nكل سؤال يجب أن يكون بهذا الشكل بالضبط.`
+      : `أنشئ ${count || 5} أسئلة متقدمة وعميقة عن موضوع "${topic}" من نوع ${questionType}.\n\nكل سؤال يجب أن يكون بهذا الشكل بالضبط.`;
+
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -43,19 +61,8 @@ serve(async (req) => {
       body: JSON.stringify({
         model: "google/gemini-3-flash-preview",
         messages: [
-          {
-            role: "system",
-            content: `أنت مولد أسئلة اختبارات تعليمية باللغة العربية متخصص في المنهج الدراسي الجزائري.
-ركّز على المواضيع المتعلقة بالتعليم في الجزائر والمنهج الجزائري.
-أنشئ أسئلة دقيقة وتعليمية ومناسبة للمستوى المطلوب.
-${extraInstructions}`
-          },
-          {
-            role: "user",
-            content: `أنشئ ${count || 5} أسئلة عن موضوع "${topic}" من نوع ${questionType} لمستوى ${levelText}.
-            
-كل سؤال يجب أن يكون بهذا الشكل بالضبط.`
-          }
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
         ],
         tools: [
           {
