@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import StarsBackground from "@/components/StarsBackground";
-import { Brain, LogOut, Settings, Sparkles, Trophy, PenTool, PlayCircle, Zap, Heart, BookOpen } from "lucide-react";
+import { Brain, LogOut, Settings, Sparkles, Trophy, PenTool, PlayCircle, Zap, Heart } from "lucide-react";
 import { motion } from "framer-motion";
 
 interface Category {
@@ -125,32 +125,6 @@ const Index = () => {
               </Button>
             </motion.div>
           </div>
-          {categories.length > 0 && (
-            <div className="mt-3">
-              <select
-                id="qa-cat-select"
-                className="hidden"
-                onChange={(e) => { if (e.target.value) navigate(`/qa/${e.target.value}`); }}
-              >
-                <option value="">اختر</option>
-                <option value="all">جميع الأقسام</option>
-                {categories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
-              </select>
-              <motion.div whileTap={{ scale: 0.97 }}>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    const sel = document.getElementById("qa-cat-select") as HTMLSelectElement;
-                    if (sel) { sel.size = sel.size > 1 ? 1 : sel.options.length; sel.focus(); }
-                    navigate(`/qa/all`);
-                  }}
-                  className="w-full gap-2 h-12 font-heading rounded-xl border-primary/30 text-primary hover:bg-primary/5"
-                >
-                  <BookOpen className="w-5 h-5" /> جلسة أسئلة وأجوبة
-                </Button>
-              </motion.div>
-            </div>
-          )}
         </motion.div>
 
         {/* Lives selector */}

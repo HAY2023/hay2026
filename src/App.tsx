@@ -11,7 +11,6 @@ import Play from "./pages/Play";
 import Results from "./pages/Results";
 import Admin from "./pages/Admin";
 import Dashboard from "./pages/Dashboard";
-import QASession from "./pages/QASession";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -31,7 +30,6 @@ const App = () => (
             <Route path="/results" element={<Results />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/qa/:categoryId" element={<QASession />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
