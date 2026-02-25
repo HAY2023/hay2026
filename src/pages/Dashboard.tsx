@@ -340,7 +340,7 @@ const Dashboard = () => {
             <TabsContent value="export" className="space-y-4">
               <div className="glass-card p-6 space-y-4">
                 <h3 className="font-heading font-bold text-foreground text-right">تصدير الأسئلة</h3>
-                <p className="text-sm text-muted-foreground text-right">اختر القسم وصدّر أسئلتك بالصيغة المطلوبة</p>
+                <p className="text-sm text-muted-foreground text-right">اختر القسم وصدّر أسئلتك بالصيغة المطلوبة (بدون إجابات - شكل اختبار)</p>
                 {categories.length > 0 && (
                   <select value={selectedCat} onChange={e => setSelectedCat(e.target.value)}
                     className="w-full bg-secondary/50 border border-border/50 rounded-xl p-3 text-foreground text-right">
@@ -348,10 +348,42 @@ const Dashboard = () => {
                     {categories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
                   </select>
                 )}
-                <div className="flex gap-3 justify-center">
+                <div className="flex gap-3 justify-center flex-wrap">
                   <ExportTools questions={questions} categories={categories} selectedCat={selectedCat} />
                 </div>
                 <p className="text-xs text-muted-foreground text-center">{filteredQ.length} سؤال متاح للتصدير</p>
+
+                {/* Preview section */}
+                {filteredQ.length > 0 && (
+                  <div className="space-y-3 pt-4 border-t border-border/30">
+                    <h4 className="font-heading text-sm text-muted-foreground text-right">معاينة شكل التصدير</h4>
+                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                      {filteredQ.slice(0, 5).map((q, i) => (
+                        <div key={q.id} className="bg-secondary/30 rounded-xl p-3 text-right">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="w-7 h-7 rounded-lg gold-gradient flex items-center justify-center text-background text-xs font-bold shrink-0">{i + 1}</span>
+                            <p className="text-sm font-body text-foreground">{q.question_text}</p>
+                          </div>
+                          {q.question_type === "multiple_choice" && q.options && (
+                            <div className="grid grid-cols-2 gap-1 mt-2 mr-9">
+                              {(q.options as string[]).map((opt, oi) => (
+                                <span key={oi} className="text-xs text-muted-foreground bg-secondary/50 rounded-lg px-2 py-1">
+                                  {["أ", "ب", "ج", "د"][oi]}) {opt}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {q.question_type === "text" && (
+                            <p className="text-xs text-muted-foreground mr-9 mt-1">..................</p>
+                          )}
+                        </div>
+                      ))}
+                      {filteredQ.length > 5 && (
+                        <p className="text-xs text-center text-muted-foreground">+ {filteredQ.length - 5} سؤال آخر</p>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </TabsContent>
           </Tabs>
