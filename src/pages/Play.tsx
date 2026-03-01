@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import StarsBackground from "@/components/StarsBackground";
 import MatchingQuestion from "@/components/MatchingQuestion";
-import { Heart, Timer, ArrowLeft, CheckCircle, XCircle, Sparkles, Loader2 } from "lucide-react";
+import { Heart, Timer, ArrowLeft, CheckCircle, XCircle, Sparkles, Loader2, Volume2, VolumeX } from "lucide-react";
 import { toast } from "sonner";
 import confetti from "canvas-confetti";
 import { motion, AnimatePresence } from "framer-motion";
@@ -74,6 +74,25 @@ const Play = () => {
   const [startTime] = useState(Date.now());
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+
+  const speakQuestion = (text: string) => {
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'ar';
+      utterance.rate = 0.9;
+      utterance.onstart = () => setIsSpeaking(true);
+      utterance.onend = () => setIsSpeaking(false);
+      utterance.onerror = () => setIsSpeaking(false);
+      window.speechSynthesis.speak(utterance);
+    }
+  };
+
+  const stopSpeaking = () => {
+    window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+  };
 
   useEffect(() => {
     if (!user || !isActivated) return;
@@ -268,6 +287,13 @@ const Play = () => {
             <h2 className="text-xl md:text-2xl font-heading font-bold text-center text-foreground leading-relaxed mb-4">
               {q.question_text}
             </h2>
+            <button
+              onClick={() => isSpeaking ? stopSpeaking() : speakQuestion(q.question_text)}
+              className="mx-auto flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors"
+            >
+              {isSpeaking ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+              <span>{isSpeaking ? "إيقاف" : "اقرأ السؤال"}</span>
+            </button>
             {showResult && (
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
                 className={`mt-4 flex items-center justify-center gap-2 ${showResult === "correct" ? "text-green-400" : "text-destructive"}`}>

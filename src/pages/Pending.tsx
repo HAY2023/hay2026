@@ -23,7 +23,6 @@ const Pending = () => {
 
   const handleActivate = async () => {
     if (!code.trim()) { toast.error("أدخل كود التفعيل"); return; }
-    // Validate format XXXXX-XXXXX-MM-YY
     const pattern = /^[A-Za-z0-9]{5}-[A-Za-z0-9]{5}-\d{2}-\d{2}$/;
     if (!pattern.test(code.trim())) {
       toast.error("صيغة الكود غير صحيحة (XXXXX-XXXXX-12-26)");
@@ -31,21 +30,48 @@ const Pending = () => {
     }
     setChecking(true);
     try {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("id, activation_code")
-        .eq("user_id", user.id)
+      // Check activation_codes table for universal codes
+      const { data: codeData, error: codeError } = await supabase
+        .from("activation_codes")
+        .select("*")
+        .eq("code", code.trim())
+        .eq("is_used", false)
         .single();
-      
-      if (error || !data) { toast.error("حدث خطأ"); setChecking(false); return; }
 
-      if (data.activation_code === code.trim()) {
-        await supabase.from("profiles").update({ is_activated: true }).eq("id", data.id);
-        toast.success("تم تفعيل حسابك بنجاح! 🎉");
-        setTimeout(() => window.location.reload(), 1000);
-      } else {
-        toast.error("كود التفعيل غير صحيح");
+      if (codeError || !codeData) {
+        // Fallback: check profile's own activation_code
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("id, activation_code")
+          .eq("user_id", user.id)
+          .single();
+        
+        if (profile?.activation_code === code.trim()) {
+          await supabase.from("profiles").update({ is_activated: true }).eq("id", profile.id);
+          toast.success("تم تفعيل حسابك بنجاح! 🎉");
+          setTimeout(() => window.location.reload(), 1000);
+        } else {
+          toast.error("كود التفعيل غير صحيح أو مستخدم مسبقاً");
+        }
+        setChecking(false);
+        return;
       }
+
+      // Mark code as used
+      await supabase.from("activation_codes").update({
+        is_used: true,
+        used_by: user.id,
+        used_at: new Date().toISOString(),
+      }).eq("id", codeData.id);
+
+      // Activate profile with the version from the code
+      await supabase.from("profiles").update({
+        is_activated: true,
+        version: codeData.version,
+      }).eq("user_id", user.id);
+
+      toast.success(`تم تفعيل حسابك بنسخة ${codeData.version.toUpperCase()}! 🎉`);
+      setTimeout(() => window.location.reload(), 1000);
     } catch {
       toast.error("حدث خطأ في التحقق");
     }
@@ -75,10 +101,9 @@ const Pending = () => {
           </CardHeader>
           <CardContent className="space-y-5 pb-8">
             <p className="text-muted-foreground font-body leading-relaxed">
-              تم إنشاء حسابك بنجاح. يرجى انتظار تفعيل الأدمن لحسابك أو إدخال كود التفعيل.
+              أدخل كود التفعيل لتفعيل حسابك واختيار النسخة (HAY أو PRO).
             </p>
 
-            {/* Activation Code Input */}
             <div className="space-y-3">
               <div className="flex items-center gap-2 justify-center text-sm text-muted-foreground">
                 <KeyRound className="w-4 h-4 text-primary" />
@@ -91,12 +116,13 @@ const Pending = () => {
                 className="bg-secondary/50 text-center rounded-xl h-12 text-lg tracking-wider font-mono"
                 dir="ltr"
               />
+              <div className="flex gap-2 text-xs text-muted-foreground justify-center">
+                <span className="px-2 py-1 rounded-full bg-primary/10 text-primary font-bold">HAY = أساسي</span>
+                <span className="px-2 py-1 rounded-full bg-purple-500/20 text-purple-400 font-bold">PRO = متقدم + AI</span>
+              </div>
               <motion.div whileTap={{ scale: 0.97 }}>
-                <Button
-                  onClick={handleActivate}
-                  disabled={checking}
-                  className="w-full gold-gradient text-background gap-2 rounded-xl shadow-lg shadow-primary/15"
-                >
+                <Button onClick={handleActivate} disabled={checking}
+                  className="w-full gold-gradient text-background gap-2 rounded-xl shadow-lg shadow-primary/15">
                   {checking ? <><Loader2 className="w-4 h-4 animate-spin" /> جاري التحقق...</> : <><KeyRound className="w-4 h-4" /> تفعيل بالكود</>}
                 </Button>
               </motion.div>
