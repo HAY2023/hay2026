@@ -14,6 +14,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      activation_codes: {
+        Row: {
+          code: string
+          created_at: string
+          id: string
+          is_used: boolean
+          used_at: string | null
+          used_by: string | null
+          version: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          id?: string
+          is_used?: boolean
+          used_at?: string | null
+          used_by?: string | null
+          version?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          id?: string
+          is_used?: boolean
+          used_at?: string | null
+          used_by?: string | null
+          version?: string
+        }
+        Relationships: []
+      }
       categories: {
         Row: {
           color: string | null
@@ -91,6 +121,7 @@ export type Database = {
           is_activated: boolean
           updated_at: string
           user_id: string
+          version: string | null
         }
         Insert: {
           activation_code?: string | null
@@ -100,6 +131,7 @@ export type Database = {
           is_activated?: boolean
           updated_at?: string
           user_id: string
+          version?: string | null
         }
         Update: {
           activation_code?: string | null
@@ -109,6 +141,7 @@ export type Database = {
           is_activated?: boolean
           updated_at?: string
           user_id?: string
+          version?: string | null
         }
         Relationships: []
       }

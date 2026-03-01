@@ -7,7 +7,7 @@ interface AuthContext {
   session: Session | null;
   isAdmin: boolean;
   isActivated: boolean;
-  profile: { display_name: string | null; is_activated: boolean; activation_code: string | null } | null;
+  profile: { display_name: string | null; is_activated: boolean; activation_code: string | null; version: string | null } | null;
   loading: boolean;
   signUp: (email: string, password: string, displayName: string) => Promise<{ error: string | null }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
@@ -27,7 +27,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const fetchProfile = useCallback(async (userId: string) => {
     const { data: p } = await supabase.from("profiles").select("*").eq("user_id", userId).single();
     if (p) {
-      setProfile({ display_name: p.display_name, is_activated: p.is_activated, activation_code: p.activation_code });
+      setProfile({ display_name: p.display_name, is_activated: p.is_activated, activation_code: p.activation_code, version: (p as any).version ?? "hay" });
       setIsActivated(p.is_activated);
     }
     const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", userId);
