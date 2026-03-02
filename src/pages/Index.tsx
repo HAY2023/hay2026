@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import StarsBackground from "@/components/StarsBackground";
 import { Brain, LogOut, Settings, Sparkles, Trophy, PenTool, Zap, Heart, GraduationCap, HelpCircle } from "lucide-react";
 import { motion } from "framer-motion";
+import NotificationBell from "@/components/NotificationBell";
 
 interface Category {
   id: string;
@@ -72,6 +73,7 @@ const Index = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <NotificationBell />
             {isAdmin && (
               <Button variant="outline" size="sm" onClick={() => navigate("/admin")} className="gap-1 rounded-xl text-xs">
                 <Settings className="w-3.5 h-3.5" /> إدارة
