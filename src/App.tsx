@@ -13,6 +13,7 @@ import Admin from "./pages/Admin";
 import Dashboard from "./pages/Dashboard";
 import ProExam from "./pages/ProExam";
 import Support from "./pages/Support";
+import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -34,6 +35,7 @@ const App = () => (
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/pro-exam" element={<ProExam />} />
             <Route path="/support" element={<Support />} />
+            <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import StarsBackground from "@/components/StarsBackground";
-import { Brain, LogOut, Settings, Sparkles, Trophy, PenTool, Zap, Heart, GraduationCap, HelpCircle } from "lucide-react";
+import { Brain, LogOut, Settings, Sparkles, Trophy, PenTool, Zap, Heart, GraduationCap, HelpCircle, User } from "lucide-react";
 import { motion } from "framer-motion";
 import NotificationBell from "@/components/NotificationBell";
 
@@ -122,11 +122,18 @@ const Index = () => {
               </motion.div>
             )}
           </div>
-          <motion.div whileTap={{ scale: 0.97 }} className="mt-3">
-            <Button onClick={() => navigate("/support")} variant="ghost" className="gap-2 w-full rounded-xl text-muted-foreground">
-              <HelpCircle className="w-4 h-4" /> الدعم الفني
-            </Button>
-          </motion.div>
+          <div className="flex gap-2 mt-3">
+            <motion.div whileTap={{ scale: 0.97 }} className="flex-1">
+              <Button onClick={() => navigate("/settings")} variant="ghost" className="gap-2 w-full rounded-xl text-muted-foreground">
+                <User className="w-4 h-4" /> الإعدادات
+              </Button>
+            </motion.div>
+            <motion.div whileTap={{ scale: 0.97 }} className="flex-1">
+              <Button onClick={() => navigate("/support")} variant="ghost" className="gap-2 w-full rounded-xl text-muted-foreground">
+                <HelpCircle className="w-4 h-4" /> الدعم الفني
+              </Button>
+            </motion.div>
+          </div>
         </motion.div>
 
         {/* Lives selector */}

@@ -205,23 +205,8 @@ const Admin = () => {
 
           {/* Users Tab */}
           <TabsContent value="users">
-            {/* Activation duration selector */}
             <div className="glass-card p-3 mb-4 flex items-center gap-3 justify-between">
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 text-primary" />
-                <span className="text-xs text-muted-foreground">مدة التفعيل:</span>
-                <select value={activationDays} onChange={e => setActivationDays(parseInt(e.target.value))}
-                  className="bg-secondary/50 border border-border/50 rounded-lg p-1.5 text-foreground text-xs">
-                  <option value={7}>7 أيام</option>
-                  <option value={15}>15 يوم</option>
-                  <option value={30}>30 يوم</option>
-                  <option value={90}>3 أشهر</option>
-                  <option value={180}>6 أشهر</option>
-                  <option value={365}>سنة</option>
-                  <option value={0}>دائم</option>
-                </select>
-              </div>
-              <span className="text-xs text-muted-foreground">{users.length} مستخدم</span>
+              <span className="text-xs text-muted-foreground flex items-center gap-1"><Users className="w-3.5 h-3.5" /> {users.length} مستخدم</span>
             </div>
 
             <motion.div variants={container} initial="hidden" animate="show" className="space-y-3">
@@ -256,13 +241,40 @@ const Admin = () => {
                         <option value="hay">HAY</option>
                         <option value="pro">PRO</option>
                       </select>
-                      <Button variant="ghost" size="sm" onClick={() => {
-                        sendNotification(u.user_id, "إشعار من الإدارة", "تم تحديث حسابك", "info");
-                        toast.success("تم إرسال إشعار");
-                      }} className="rounded-xl text-xs gap-1">
+                      <Button variant="ghost" size="sm" onClick={() => setSelectedUser(selectedUser?.id === u.id ? null : u)} className="rounded-xl text-xs gap-1">
                         <Bell className="w-3 h-3" /> إشعار
                       </Button>
                     </div>
+                    {selectedUser?.id === u.id && (
+                      <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="mt-3 space-y-2 border-t border-border/30 pt-3">
+                        <div className="flex items-center gap-2">
+                          <Clock className="w-3.5 h-3.5 text-primary" />
+                          <span className="text-xs text-muted-foreground">مدة تفعيل هذا المستخدم:</span>
+                          <select value={activationDays} onChange={e => setActivationDays(parseInt(e.target.value))}
+                            className="bg-secondary/50 border border-border/50 rounded-lg p-1 text-foreground text-xs">
+                            <option value={7}>7 أيام</option>
+                            <option value={15}>15 يوم</option>
+                            <option value={30}>30 يوم</option>
+                            <option value={90}>3 أشهر</option>
+                            <option value={180}>6 أشهر</option>
+                            <option value={365}>سنة</option>
+                            <option value={0}>دائم</option>
+                          </select>
+                        </div>
+                        <Input id={`notif-title-${u.id}`} placeholder="عنوان الإشعار" className="bg-secondary/50 text-right rounded-xl text-xs h-9" />
+                        <Input id={`notif-msg-${u.id}`} placeholder="نص الإشعار" className="bg-secondary/50 text-right rounded-xl text-xs h-9" />
+                        <Button size="sm" onClick={async () => {
+                          const title = (document.getElementById(`notif-title-${u.id}`) as HTMLInputElement)?.value;
+                          const msg = (document.getElementById(`notif-msg-${u.id}`) as HTMLInputElement)?.value;
+                          if (!title || !msg) { toast.error("أكمل الحقول"); return; }
+                          await sendNotification(u.user_id, title, msg, "info");
+                          toast.success("تم إرسال الإشعار");
+                          setSelectedUser(null);
+                        }} className="gold-gradient text-background gap-1 rounded-xl text-xs">
+                          <Bell className="w-3 h-3" /> إرسال إشعار
+                        </Button>
+                      </motion.div>
+                    )}
                   </motion.div>
                 );
               })}
