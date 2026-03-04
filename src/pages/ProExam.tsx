@@ -22,8 +22,9 @@ interface ExamQuestion {
 const ProExam = () => {
   const { user, isActivated, loading, profile } = useAuth();
   const navigate = useNavigate();
-  const [topic, setTopic] = useState("");
-  const [level, setLevel] = useState("متوسط");
+  const searchParams = new URLSearchParams(window.location.search);
+  const [topic, setTopic] = useState(searchParams.get("topic") || "");
+  const [level, setLevel] = useState(searchParams.get("level") || "متوسط");
   const [count, setCount] = useState(10);
   const [generating, setGenerating] = useState(false);
   const [questions, setQuestions] = useState<ExamQuestion[]>([]);

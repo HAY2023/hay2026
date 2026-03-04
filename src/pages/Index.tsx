@@ -114,12 +114,20 @@ const Index = () => {
               </Button>
             </motion.div>
             {version === "pro" && (
-              <motion.div whileTap={{ scale: 0.97 }} className="col-span-2">
-                <Button onClick={() => navigate("/pro-exam")}
-                  className="bg-purple-600 hover:bg-purple-700 text-white gap-2 h-14 text-base font-heading w-full rounded-xl shadow-lg shadow-purple-500/20">
-                  <GraduationCap className="w-5 h-5" /> اختبار PRO - AI أستاذ
-                </Button>
-              </motion.div>
+              <>
+                <motion.div whileTap={{ scale: 0.97 }} className="col-span-2">
+                  <Button onClick={() => navigate("/pro-exam")}
+                    className="bg-purple-600 hover:bg-purple-700 text-white gap-2 h-14 text-base font-heading w-full rounded-xl shadow-lg shadow-purple-500/20">
+                    <GraduationCap className="w-5 h-5" /> اختبار PRO - AI أستاذ
+                  </Button>
+                </motion.div>
+                <motion.div whileTap={{ scale: 0.97 }} className="col-span-2">
+                  <Button onClick={() => navigate("/curriculum")} variant="outline"
+                    className="gap-2 h-12 text-base font-heading w-full rounded-xl border-primary/30">
+                    <Sparkles className="w-4 h-4 text-primary" /> 🇩🇿 المنهج الدراسي الجزائري
+                  </Button>
+                </motion.div>
+              </>
             )}
           </div>
           <div className="flex gap-2 mt-3">
