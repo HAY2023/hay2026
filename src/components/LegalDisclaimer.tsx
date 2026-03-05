@@ -77,7 +77,7 @@ const LegalDisclaimer = ({ userId, onAccept }: LegalDisclaimerProps) => {
                         <div className="flex gap-3">
                             <CheckCircle2 className="w-5 h-5 text-primary shrink-0 mt-1" />
                             <p>
-                                <strong className="text-foreground">Support:</strong> The right to request technical support expires once a solution is offered or the request is processed. Management reserves the right to terminate support for any abusive or unreasonable behavior.
+                                <strong className="text-foreground">Support Policy:</strong> The right to technical support expires immediately if a solution is provided or the request is processed, and the site management may refrain from responding to any person without justification or for reasons of ill-treatment.
                             </p>
                         </div>
 

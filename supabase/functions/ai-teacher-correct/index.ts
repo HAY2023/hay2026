@@ -1,4 +1,6 @@
+
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,67 +11,80 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { question, userAnswer, correctAnswer, topic, level } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const geminiApiKey = Deno.env.get("GEMINI_API_KEY");
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const supabase = createClient(supabaseUrl, supabaseServiceRole);
+
+    // 1. Auth & Subscription Check
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) throw new Error('Unauthorized: Missing token');
+
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) throw new Error('Unauthorized: Invalid token');
+
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('is_activated, activation_expires_at, version')
+      .eq('user_id', user.id)
+      .single();
+
+    if (profileError || !profile || !profile.is_activated) {
+      return new Response(JSON.stringify({ error: "حسابك غير مفعل." }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (profile.activation_expires_at && new Date(profile.activation_expires_at) < new Date()) {
+      return new Response(JSON.stringify({ error: "انتهت صلاحية اشتراكك." }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // 2. Process Request
+    const { question, userAnswer, correctAnswer, topic, level } = await req.json();
+
+    // 3. Direct Gemini Call
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
+
+    const geminiResp = await fetch(geminiUrl, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          {
-            role: "system",
-            content: `أنت أستاذ جزائري متخصص في التعليم. تقوم بتصحيح إجابات التلاميذ بطريقة تعليمية.
-عند تصحيح كل إجابة:
-1. حدد إن كانت صحيحة أو خاطئة
-2. اشرح الإجابة الصحيحة بشكل مبسط
-3. أضف معلومة إضافية مفيدة
-4. شجع التلميذ بأسلوب إيجابي
-استخدم إيموجي مناسبة. كن مختصراً ومفيداً.`
-          },
-          {
-            role: "user",
-            content: `الموضوع: ${topic || "عام"}
+        contents: [{
+          parts: [{
+            text: `أنت أستاذ جزائري خبير في التعليم. قم بتصحيح إجابة التلميذ بطريقة تعليمية مشجعة.
+الموضوع: ${topic || "عام"}
 المستوى: ${level || "متوسط"}
 السؤال: ${question}
 إجابة التلميذ: ${userAnswer}
 الإجابة الصحيحة: ${correctAnswer}
 
-صحح هذه الإجابة كأستاذ.`
-          }
-        ],
+عند التصحيح:
+1. حدد إن كانت صحيحة أو خاطئة (مع لمسة إيجابية).
+2. اشرح الإجابة الصحيحة بشكل مبسط.
+3. أضف معلومة مفيدة وأستخدم إيموجي تشجيعية.
+أجب باللغة العربية بأسلوب تعليمي جزائري ودي.` }]
+        }],
       }),
     });
 
-    if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "تم تجاوز حد الطلبات، حاول لاحقاً" }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "يرجى إضافة رصيد" }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      throw new Error("AI gateway error");
-    }
+    if (!geminiResp.ok) throw new Error(`Gemini API error: ${geminiResp.statusText}`);
 
-    const data = await response.json();
-    const correction = data.choices?.[0]?.message?.content || "لم يتم التصحيح";
+    const geminiData = await geminiResp.json();
+    const correction = geminiData.candidates?.[0]?.content?.parts?.[0]?.text || "لم يتم التصحيح";
 
     return new Response(JSON.stringify({ correction }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  } catch (e) {
-    console.error("ai-teacher-correct error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+
+  } catch (err: any) {
+    console.error("Error:", err);
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: err.message.includes('Unauthorized') ? 401 : 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });

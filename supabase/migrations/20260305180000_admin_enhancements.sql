@@ -46,8 +46,12 @@ BEGIN
         END IF;
     END IF;
 
-    -- Calculate expiry
-    expiry_date := now() + (code_record.duration_days || ' days')::interval;
+    -- Calculate expiry (0 means permanent/null)
+    IF code_record.duration_days = 0 THEN
+        expiry_date := NULL;
+    ELSE
+        expiry_date := now() + (code_record.duration_days || ' days')::interval;
+    END IF;
 
     -- Update code
     UPDATE public.activation_codes 
