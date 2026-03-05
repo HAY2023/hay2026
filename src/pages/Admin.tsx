@@ -29,6 +29,7 @@ interface ActivationCode {
   version: string;
   is_used: boolean;
   used_by: string | null;
+  duration_days: number;
   created_at: string;
 }
 
@@ -70,6 +71,7 @@ const Admin = () => {
   const [tab, setTab] = useState<"users" | "codes" | "tickets" | "settings">("users");
   const [genVersion, setGenVersion] = useState<"hay" | "pro">("hay");
   const [genCount, setGenCount] = useState(1);
+  const [genDuration, setGenDuration] = useState(30);
   const [selectedUser, setSelectedUser] = useState<Profile | null>(null);
   const [userActivationDays, setUserActivationDays] = useState<Record<string, number>>({});
   const [replyText, setReplyText] = useState("");
@@ -144,6 +146,22 @@ const Admin = () => {
     fetchUsers();
   };
 
+  const revokeStatus = async (p: Profile) => {
+    if (!confirm(`هل أنت متأكد من سحب صلاحيات PRO من ${p.display_name}؟`)) return;
+    const { error } = await supabase.rpc("revoke_pro_status", { target_user_id: p.user_id });
+    if (error) { toast.error(error.message); return; }
+    toast.success("تم سحب الصلاحيات وتعطيل الحساب");
+    fetchUsers();
+  };
+
+  const deleteUserPermanently = async (p: Profile) => {
+    if (!confirm(`تحذير خطير: هل أنت متأكد من حذف حساب ${p.display_name} نهائياً؟ لا يمكن التراجع!`)) return;
+    const { error } = await supabase.rpc("delete_user_permanently", { target_user_id: p.user_id });
+    if (error) { toast.error(error.message); return; }
+    toast.success("تم حذف الحساب نهائياً");
+    fetchUsers();
+  };
+
   const sendNotification = async (userId: string, title: string, message: string, type: string = "info") => {
     await supabase.from("notifications").insert({ user_id: userId, title, message, type });
   };
@@ -152,10 +170,11 @@ const Admin = () => {
     const newCodes = Array.from({ length: genCount }, () => ({
       code: generateCode(genVersion),
       version: genVersion,
+      duration_days: genDuration,
     }));
     const { error } = await supabase.from("activation_codes").insert(newCodes);
     if (error) { toast.error("خطأ في إنشاء الأكواد"); return; }
-    toast.success(`تم إنشاء ${genCount} كود ${genVersion.toUpperCase()}`);
+    toast.success(`تم إنشاء ${genCount} كود ${genVersion.toUpperCase()} (${genDuration} يوم)`);
     fetchCodes();
   };
 
@@ -365,38 +384,51 @@ const Admin = () => {
                         <option value="pro">PRO</option>
                       </select>
                       <Button variant="ghost" size="sm" onClick={() => setSelectedUser(selectedUser?.id === u.id ? null : u)} className="rounded-xl text-xs gap-1">
-                        <Bell className="w-3 h-3" /> إشعار
+                        <Bell className="w-3 h-3" /> إجراءات
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => deleteUserPermanently(u)} className="rounded-xl text-xs gap-1 text-destructive hover:bg-destructive/10">
+                        <X className="w-3.5 h-3.5" /> حذف
                       </Button>
                     </div>
                     <AnimatePresence>
                       {selectedUser?.id === u.id && (
-                        <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="mt-3 space-y-2 border-t border-border/30 pt-3">
+                        <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="mt-3 space-y-3 border-t border-border/30 pt-3">
                           <div className="flex items-center gap-2 flex-wrap">
                             <Clock className="w-3.5 h-3.5 text-primary" />
-                            <span className="text-xs text-muted-foreground">مدة تفعيل هذا المستخدم:</span>
+                            <span className="text-xs text-muted-foreground">مدة التفعيل (عند التفعيل المباشر):</span>
                             <select value={getUserDays(u.id)} onChange={e => setUserDays(u.id, parseInt(e.target.value))}
                               className="bg-secondary/50 border border-border/50 rounded-lg p-1 text-foreground text-xs">
                               <option value={7}>7 أيام</option>
                               <option value={15}>15 يوم</option>
-                              <option value={30}>30 يوم</option>
-                              <option value={90}>3 أشهر</option>
-                              <option value={180}>6 أشهر</option>
-                              <option value={365}>سنة</option>
+                              <option value={30}>30 يوم (شهر)</option>
+                              <option value={90}>90 يوم (3 أشهر)</option>
+                              <option value={180}>180 يوم (6 أشهر)</option>
+                              <option value={365}>365 يوم (سنة)</option>
                               <option value={0}>دائم</option>
                             </select>
                           </div>
-                          <Input id={`notif-title-${u.id}`} placeholder="عنوان الإشعار" className="bg-secondary/50 text-right rounded-xl text-xs h-9" />
-                          <Input id={`notif-msg-${u.id}`} placeholder="نص الإشعار" className="bg-secondary/50 text-right rounded-xl text-xs h-9" />
-                          <Button size="sm" onClick={async () => {
-                            const title = (document.getElementById(`notif-title-${u.id}`) as HTMLInputElement)?.value;
-                            const msg = (document.getElementById(`notif-msg-${u.id}`) as HTMLInputElement)?.value;
-                            if (!title || !msg) { toast.error("أكمل الحقول"); return; }
-                            await sendNotification(u.user_id, title, msg, "info");
-                            toast.success("تم إرسال الإشعار");
-                            setSelectedUser(null);
-                          }} className="gold-gradient text-background gap-1 rounded-xl text-xs">
-                            <Bell className="w-3 h-3" /> إرسال إشعار
-                          </Button>
+
+                          <div className="flex gap-2">
+                            <Button size="sm" variant="outline" onClick={() => revokeStatus(u)} className="rounded-xl text-xs gap-1 text-purple-400 border-purple-500/30">
+                              <ArrowUpCircle className="w-3 h-3 rotate-180" /> سحب PRO وتعطيل
+                            </Button>
+                          </div>
+
+                          <div className="space-y-2">
+                            <span className="text-xs text-muted-foreground">إرسال إشعار يدوي:</span>
+                            <Input id={`notif-title-${u.id}`} placeholder="عنوان الإشعار" className="bg-secondary/50 text-right rounded-xl text-xs h-9" />
+                            <Input id={`notif-msg-${u.id}`} placeholder="نص الإشعار" className="bg-secondary/50 text-right rounded-xl text-xs h-9" />
+                            <Button size="sm" onClick={async () => {
+                              const title = (document.getElementById(`notif-title-${u.id}`) as HTMLInputElement)?.value;
+                              const msg = (document.getElementById(`notif-msg-${u.id}`) as HTMLInputElement)?.value;
+                              if (!title || !msg) { toast.error("أكمل الحقول"); return; }
+                              await sendNotification(u.user_id, title, msg, "info");
+                              toast.success("تم إرسال الإشعار");
+                              setSelectedUser(null);
+                            }} className="gold-gradient text-background gap-1 rounded-xl text-xs">
+                              <Bell className="w-3 h-3" /> إرسال إشعار
+                            </Button>
+                          </div>
                         </motion.div>
                       )}
                     </AnimatePresence>
@@ -430,8 +462,19 @@ const Admin = () => {
                   <Input type="number" value={genCount} onChange={e => setGenCount(Math.max(1, parseInt(e.target.value) || 1))}
                     min={1} max={50} className="w-20 bg-secondary/50 rounded-xl" />
                 </div>
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">المدة (أيام)</label>
+                  <select value={genDuration} onChange={e => setGenDuration(parseInt(e.target.value))}
+                    className="bg-secondary/50 border border-border/50 rounded-xl p-2.5 text-foreground text-sm">
+                    <option value={30}>30 يوم (شهر)</option>
+                    <option value={90}>90 يوم (3 أشهر)</option>
+                    <option value={180}>180 يوم (6 أشهر)</option>
+                    <option value={365}>365 يوم (سنة)</option>
+                    <option value={9999}>دائم</option>
+                  </select>
+                </div>
                 <Button onClick={generateCodes} className="gold-gradient text-background gap-1 rounded-xl shadow-lg shadow-primary/15">
-                  <Plus className="w-4 h-4" /> إنشاء
+                  <Plus className="w-4 h-4" /> إنشاء الأكواد
                 </Button>
               </div>
             </div>
@@ -440,11 +483,12 @@ const Admin = () => {
               {codes.map(c => (
                 <motion.div key={c.id} variants={item} className={`glass-card p-3 flex items-center justify-between gap-2 ${c.is_used ? "opacity-50" : ""}`}>
                   <div className="flex items-center gap-2 min-w-0 flex-1">
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${c.version === "pro" ? "bg-purple-500/20 text-purple-400" : "bg-primary/10 text-primary"}`}>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${c.version === "pro" ? "bg-purple-500/20 text-purple-400" : "bg-primary/10 text-primary"}`}>
                       {c.version.toUpperCase()}
                     </span>
                     <code className="text-sm font-mono text-foreground truncate" dir="ltr">{c.code}</code>
-                    {c.is_used && <span className="text-xs text-muted-foreground">✅ مستخدم</span>}
+                    <span className="text-[10px] text-muted-foreground shrink-0">{c.duration_days >= 365 ? "سنة" : c.duration_days + " يوم"}</span>
+                    {c.is_used && <span className="text-[10px] text-muted-foreground">✅ مستخدم</span>}
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     {!c.is_used && (
@@ -519,8 +563,8 @@ const Admin = () => {
                         <div className="flex items-center gap-1 justify-end">
                           <span className="text-xs text-muted-foreground">الثقة:</span>
                           <span className={`text-xs px-2 py-0.5 rounded-full ${aiDiagnosis.confidence === "high" ? "bg-green-500/20 text-green-400" :
-                              aiDiagnosis.confidence === "medium" ? "bg-yellow-500/20 text-yellow-400" :
-                                "bg-red-500/20 text-red-400"
+                            aiDiagnosis.confidence === "medium" ? "bg-yellow-500/20 text-yellow-400" :
+                              "bg-red-500/20 text-red-400"
                             }`}>{aiDiagnosis.confidence === "high" ? "عالية" : aiDiagnosis.confidence === "medium" ? "متوسطة" : "منخفضة"}</span>
                         </div>
                       </div>
