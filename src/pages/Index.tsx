@@ -33,9 +33,26 @@ const Index = () => {
 
   useEffect(() => {
     if (user && isActivated) {
-      supabase.from("categories").select("*").eq("created_by", user.id).then(({ data }) => {
-        if (data) setCategories(data as Category[]);
-      });
+      const fetchCategories = async () => {
+        const { data } = await supabase.from("categories").select("*").eq("created_by", user.id);
+        if (data && data.length > 0) {
+          setCategories(data as Category[]);
+        } else {
+          // Auto-create default categories for new users
+          const defaults = [
+            { name: "جغرافيا", icon: "🌍", color: "#4CAF50", created_by: user.id },
+            { name: "تاريخ", icon: "📜", color: "#FF9800", created_by: user.id },
+            { name: "علوم", icon: "🔬", color: "#2196F3", created_by: user.id },
+            { name: "رياضيات", icon: "🔢", color: "#9C27B0", created_by: user.id },
+            { name: "ثقافة عامة", icon: "📚", color: "#D4AF37", created_by: user.id },
+            { name: "رياضة", icon: "⚽", color: "#F44336", created_by: user.id },
+          ];
+          await supabase.from("categories").insert(defaults);
+          const { data: newData } = await supabase.from("categories").select("*").eq("created_by", user.id);
+          if (newData) setCategories(newData as Category[]);
+        }
+      };
+      fetchCategories();
     }
   }, [user, isActivated]);
 
