@@ -17,17 +17,24 @@ const LegalDisclaimer = ({ userId, onAccept }: LegalDisclaimerProps) => {
     const handleAgree = async () => {
         setLoading(true);
         try {
-            const { error } = await supabase
+            const { data, error } = await supabase
                 .from("profiles")
                 .update({ tos_accepted: true })
-                .eq("user_id", userId);
+                .eq("user_id", userId)
+                .select();
 
             if (error) throw error;
-            toast.success("Terms accepted. Welcome!");
+
+            if (!data || data.length === 0) {
+                console.error("No profile updated. Profile might not exist.");
+                throw new Error("لم يتم العثور على ملفك الشخصي. يرجى إعادة المحاولة.");
+            }
+
+            toast.success("تم قبول الشروط. أهلاً بك!");
             onAccept();
-        } catch (err) {
-            console.error(err);
-            toast.error("Error accepting terms. Please try again.");
+        } catch (err: any) {
+            console.error("Agreement error details:", err);
+            toast.error(err.message || "حدث خطأ أثناء قبول الشروط. يرجى المحاولة لاحقاً.");
         } finally {
             setLoading(false);
         }
