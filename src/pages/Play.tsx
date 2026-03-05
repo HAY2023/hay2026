@@ -163,12 +163,29 @@ const Play = () => {
       total_questions: questions.length, correct_answers: score, score_percentage: pct, time_taken: timeTaken,
     }).then(() => { });
     setAnalyzing(true);
-    const analyzeUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-results`;
-    fetch(analyzeUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
-      body: JSON.stringify({ score, total: questions.length, percentage: pct, categoryName: categoryId === "all" ? null : categoryId, timeTaken }),
-    }).then((r) => r.json()).then((d) => { if (d.analysis) setAiAnalysis(d.analysis); }).catch(() => { }).finally(() => setAnalyzing(false));
+    const fetchAnalysis = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return;
+
+        const analyzeUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-results`;
+        const resp = await fetch(analyzeUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify({ score, total: questions.length, percentage: pct, categoryName: categoryId === "all" ? null : categoryId, timeTaken }),
+        });
+        const d = await resp.json();
+        if (d.analysis) setAiAnalysis(d.analysis);
+      } catch (err) {
+        console.error("Analysis error:", err);
+      } finally {
+        setAnalyzing(false);
+      }
+    };
+    fetchAnalysis();
   }, [gameOver]);
 
   if (loading || fetchLoading) return (
@@ -297,7 +314,7 @@ const Play = () => {
             {showResult && (
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
                 className={`mt-4 flex items-center justify-center gap-2 ${showResult === "correct" ? "text-green-400" : "text-destructive"}`}>
-                {showResult === "correct" ? <CheckCircle className="w-5 h-5" /> : <XCircle className="w-5 h-5" /> }
+                {showResult === "correct" ? <CheckCircle className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
                 <span className="font-body">{showResult === "correct" ? "إجابة صحيحة!" : "خطأ!"}</span>
               </motion.div>
             )}
