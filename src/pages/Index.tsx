@@ -34,22 +34,55 @@ const Index = () => {
   useEffect(() => {
     if (user && isActivated) {
       const fetchCategories = async () => {
-        const { data } = await supabase.from("categories").select("*").eq("created_by", user.id);
-        if (data && data.length > 0) {
-          setCategories(data as Category[]);
-        } else {
-          // Auto-create default categories for new users
-          const defaults = [
-            { name: "جغرافيا", icon: "🌍", color: "#4CAF50", created_by: user.id },
-            { name: "تاريخ", icon: "📜", color: "#FF9800", created_by: user.id },
-            { name: "علوم", icon: "🔬", color: "#2196F3", created_by: user.id },
-            { name: "رياضيات", icon: "🔢", color: "#9C27B0", created_by: user.id },
-            { name: "ثقافة عامة", icon: "📚", color: "#D4AF37", created_by: user.id },
-            { name: "رياضة", icon: "⚽", color: "#F44336", created_by: user.id },
-          ];
-          await supabase.from("categories").insert(defaults);
-          const { data: newData } = await supabase.from("categories").select("*").eq("created_by", user.id);
-          if (newData) setCategories(newData as Category[]);
+        try {
+          // 1. Try to fetch categories created by the user or shared ones
+          const { data: catData, error: catErr } = await supabase
+            .from("categories")
+            .select("*")
+            .or(`created_by.eq.${user.id},created_by.is.null`);
+
+          if (catData && catData.length > 0) {
+            setCategories(catData as Category[]);
+          } else {
+            // 2. If categories table is empty, check if there are questions with category_id
+            const { data: qData } = await supabase
+              .from("questions")
+              .select("category_id")
+              .eq("created_by", user.id);
+
+            if (qData && qData.length > 0) {
+              const uniqueCatIds = [...new Set(qData.map(q => q.category_id))];
+              const { data: linkedCats } = await supabase
+                .from("categories")
+                .select("*")
+                .in("id", uniqueCatIds);
+
+              if (linkedCats && linkedCats.length > 0) {
+                setCategories(linkedCats as Category[]);
+                return;
+              }
+            }
+
+            // 3. Fallback: Auto-create default categories if still empty
+            const defaults = [
+              { name: "جغرافيا", icon: "🌍", color: "#4CAF50", created_by: user.id },
+              { name: "تاريخ", icon: "📜", color: "#FF9800", created_by: user.id },
+              { name: "علوم", icon: "🔬", color: "#2196F3", created_by: user.id },
+              { name: "رياضيات", icon: "🔢", color: "#9C27B0", created_by: user.id },
+              { name: "ثقافة عامة", icon: "📚", color: "#D4AF37", created_by: user.id },
+              { name: "رياضة", icon: "⚽", color: "#F44336", created_by: user.id },
+            ];
+            const { error: insErr } = await supabase.from("categories").insert(defaults);
+
+            // Re-fetch after insert
+            const { data: newData } = await supabase
+              .from("categories")
+              .select("*")
+              .eq("created_by", user.id);
+            if (newData) setCategories(newData as Category[]);
+          }
+        } catch (err) {
+          console.error("Error in fetchCategories:", err);
         }
       };
       fetchCategories();
@@ -193,9 +226,9 @@ const Index = () => {
               </motion.div>
             </motion.div>
           ) : (
-            <motion.div variants={container} initial="hidden" animate="show" className="grid grid-cols-2 gap-3">
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="grid grid-cols-2 gap-3">
               {/* Cocktail */}
-              <motion.button variants={item} whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
+              <motion.button whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
                 onClick={() => navigate(`/play/all?lives=${livesCount}`)}
                 className="glass-card-hover p-6 text-center col-span-2 relative overflow-hidden group">
                 <div className="absolute inset-0 gold-gradient opacity-5 group-hover:opacity-10 transition-opacity" />
@@ -211,7 +244,7 @@ const Index = () => {
               </motion.button>
 
               {categories.map((cat) => (
-                <motion.button key={cat.id} variants={item} whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                <motion.button key={cat.id} whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
                   onClick={() => navigate(`/play/${cat.id}?lives=${livesCount}`)}
                   className="glass-card-hover p-5 text-center">
                   <div className="text-3xl mb-2">{cat.icon}</div>
