@@ -1,6 +1,6 @@
 
 import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { Shield, CheckCircle2, AlertTriangle, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
@@ -16,25 +16,36 @@ const LegalDisclaimer = ({ userId, onAccept }: LegalDisclaimerProps) => {
 
     const handleAgree = async () => {
         setLoading(true);
+        console.log("Accepting TOS for:", userId);
         try {
-            const { data, error } = await supabase
+            // First check if profile exists
+            const { data: profile, error: checkError } = await supabase
                 .from("profiles")
-                .update({ tos_accepted: true })
+                .select("id")
                 .eq("user_id", userId)
-                .select();
+                .single();
 
-            if (error) throw error;
-
-            if (!data || data.length === 0) {
-                console.error("No profile updated. Profile might not exist.");
-                throw new Error("لم يتم العثور على ملفك الشخصي. يرجى إعادة المحاولة.");
+            if (checkError) {
+                console.error("Profile check error:", checkError);
+                throw new Error("لم يتم العثور على ملفك الشخصي في قاعدة البيانات.");
             }
 
-            toast.success("تم قبول الشروط. أهلاً بك!");
+            // Perform the update
+            const { error: updateError } = await supabase
+                .from("profiles")
+                .update({ tos_accepted: true })
+                .eq("user_id", userId);
+
+            if (updateError) {
+                console.error("Update error:", updateError);
+                throw updateError;
+            }
+
+            toast.success("تم قبول الشروط بنجاح!");
             onAccept();
         } catch (err: any) {
-            console.error("Agreement error details:", err);
-            toast.error(err.message || "حدث خطأ أثناء قبول الشروط. يرجى المحاولة لاحقاً.");
+            console.error("Full error object:", err);
+            toast.error(`فشل الحفظ: ${err.message || "تأكد من تطبيق كود SQL الموفر لك"}`);
         } finally {
             setLoading(false);
         }
