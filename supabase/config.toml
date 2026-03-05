@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.ai-teacher-correct]
 verify_jwt = false
+
+[functions.ai-support-diagnose]
+verify_jwt = false

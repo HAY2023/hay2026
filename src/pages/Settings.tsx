@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -6,13 +6,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import StarsBackground from "@/components/StarsBackground";
 import { toast } from "sonner";
-import { ArrowRight, User, Lock, Clock, Shield, Save, Trash2, AlertTriangle, Brain, Eye, EyeOff } from "lucide-react";
-import { motion } from "framer-motion";
+import {
+  ArrowRight, User, Lock, Clock, Shield, Save, Trash2, AlertTriangle,
+  Brain, Eye, EyeOff, Download, FileText, LogOut, Palette, Info
+} from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
 const Settings = () => {
   const { user, isActivated, loading, profile, signOut } = useAuth();
   const navigate = useNavigate();
-  const [displayName, setDisplayName] = useState(profile?.display_name || "");
+  const [displayName, setDisplayName] = useState("");
   const [saving, setSaving] = useState(false);
   const [newPass, setNewPass] = useState("");
   const [confirmPass, setConfirmPass] = useState("");
@@ -21,6 +24,26 @@ const Settings = () => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteText, setDeleteText] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [statsCount, setStatsCount] = useState({ categories: 0, questions: 0, results: 0 });
+
+  useEffect(() => {
+    if (profile?.display_name) setDisplayName(profile.display_name);
+  }, [profile]);
+
+  useEffect(() => {
+    if (!user) return;
+    Promise.all([
+      supabase.from("categories").select("id", { count: "exact", head: true }).eq("created_by", user.id),
+      supabase.from("questions").select("id", { count: "exact", head: true }).eq("created_by", user.id),
+      supabase.from("game_results").select("id", { count: "exact", head: true }).eq("user_id", user.id),
+    ]).then(([cats, qs, res]) => {
+      setStatsCount({
+        categories: cats.count || 0,
+        questions: qs.count || 0,
+        results: res.count || 0,
+      });
+    });
+  }, [user]);
 
   if (loading) return null;
   if (!user) return <Navigate to="/auth" replace />;
@@ -49,15 +72,37 @@ const Settings = () => {
     setChangingPass(false);
   };
 
+  const exportData = async () => {
+    try {
+      const [cats, qs, results] = await Promise.all([
+        supabase.from("categories").select("*").eq("created_by", user.id),
+        supabase.from("questions").select("*").eq("created_by", user.id),
+        supabase.from("game_results").select("*").eq("user_id", user.id),
+      ]);
+      const data = {
+        profile: { display_name: profile?.display_name, version, email: user.email },
+        categories: cats.data || [],
+        questions: qs.data || [],
+        results: results.data || [],
+        exportedAt: new Date().toISOString(),
+      };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `quiz-ai-data-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click(); URL.revokeObjectURL(url);
+      toast.success("تم تصدير البيانات بنجاح");
+    } catch { toast.error("خطأ في التصدير"); }
+  };
+
   const deleteAccount = async () => {
     if (deleteText !== "حذف حسابي") { toast.error('اكتب "حذف حسابي" للتأكيد'); return; }
     setDeleting(true);
     try {
-      // Delete user data
       await supabase.from("game_results").delete().eq("user_id", user.id);
-      await supabase.from("notifications").delete().eq("user_id", user.id);
-      await supabase.from("categories").delete().eq("created_by", user.id);
       await supabase.from("questions").delete().eq("created_by", user.id);
+      await supabase.from("categories").delete().eq("created_by", user.id);
+      await supabase.from("notifications").delete().eq("user_id", user.id);
       await supabase.from("profiles").delete().eq("user_id", user.id);
       await signOut();
       toast.success("تم حذف بيانات حسابك");
@@ -71,7 +116,7 @@ const Settings = () => {
   return (
     <div className="min-h-screen relative">
       <StarsBackground />
-      <div className="relative z-10 max-w-lg mx-auto p-4 md:p-6">
+      <div className="relative z-10 max-w-lg mx-auto p-4 md:p-6 pb-20">
         <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-xl bg-primary/20 flex items-center justify-center">
@@ -84,7 +129,7 @@ const Settings = () => {
           </Button>
         </motion.div>
 
-        {/* Account Info */}
+        {/* Account Info Card */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
           className="glass-card p-5 mb-4 space-y-3">
           <h3 className="font-heading font-bold text-foreground text-right flex items-center gap-2 justify-end">
@@ -117,27 +162,31 @@ const Settings = () => {
               </div>
             )}
           </div>
-        </motion.div>
 
-        {/* AI Security Info */}
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
-          className="glass-card p-5 mb-4 space-y-2 border-primary/10">
-          <h3 className="font-heading font-bold text-foreground text-right flex items-center gap-2 justify-end">
-            <span>حماية AI</span>
-            <Brain className="w-4 h-4 text-primary" />
-          </h3>
-          <div className="text-right text-xs text-muted-foreground space-y-1">
-            <p>🔒 جميع البيانات مشفرة ومحمية بسياسات أمان متقدمة</p>
-            <p>🛡️ حماية على مستوى الصفوف (RLS) لكل جدول</p>
-            <p>🤖 اتصال AI عبر بوابة آمنة مع تشفير كامل</p>
-            <p>✅ لا يتم مشاركة بياناتك مع أي طرف ثالث</p>
+          {/* User Stats */}
+          <div className="grid grid-cols-3 gap-2 pt-2 border-t border-border/30">
+            <div className="text-center">
+              <p className="text-lg font-heading font-bold text-primary">{statsCount.categories}</p>
+              <p className="text-xs text-muted-foreground">أقسام</p>
+            </div>
+            <div className="text-center">
+              <p className="text-lg font-heading font-bold text-primary">{statsCount.questions}</p>
+              <p className="text-xs text-muted-foreground">أسئلة</p>
+            </div>
+            <div className="text-center">
+              <p className="text-lg font-heading font-bold text-primary">{statsCount.results}</p>
+              <p className="text-xs text-muted-foreground">اختبارات</p>
+            </div>
           </div>
         </motion.div>
 
         {/* Change Name */}
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
           className="glass-card p-5 mb-4 space-y-3">
-          <h3 className="font-heading font-bold text-foreground text-right">تغيير الاسم</h3>
+          <h3 className="font-heading font-bold text-foreground text-right flex items-center gap-2 justify-end">
+            <span>تغيير الاسم</span>
+            <Palette className="w-4 h-4 text-primary" />
+          </h3>
           <Input value={displayName} onChange={e => setDisplayName(e.target.value)}
             placeholder="اسمك الجديد" className="bg-secondary/50 text-right rounded-xl" />
           <Button onClick={saveProfile} disabled={saving} className="gold-gradient text-background gap-1 rounded-xl w-full">
@@ -146,7 +195,7 @@ const Settings = () => {
         </motion.div>
 
         {/* Change Password */}
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
           className="glass-card p-5 mb-4 space-y-3">
           <h3 className="font-heading font-bold text-foreground text-right flex items-center gap-2 justify-end">
             <span>تغيير كلمة المرور</span>
@@ -169,21 +218,45 @@ const Settings = () => {
           </Button>
         </motion.div>
 
+        {/* Export & Security */}
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}
+          className="glass-card p-5 mb-4 space-y-3">
+          <h3 className="font-heading font-bold text-foreground text-right flex items-center gap-2 justify-end">
+            <span>البيانات والأمان</span>
+            <Brain className="w-4 h-4 text-primary" />
+          </h3>
+          <div className="text-right text-xs text-muted-foreground space-y-1">
+            <p>🔒 جميع البيانات مشفرة ومحمية بسياسات أمان متقدمة (RLS)</p>
+            <p>🤖 اتصال AI عبر بوابة آمنة مع تشفير كامل</p>
+            <p>✅ لا يتم مشاركة بياناتك مع أي طرف ثالث</p>
+          </div>
+          <Button onClick={exportData} variant="outline" className="gap-1 rounded-xl w-full">
+            <Download className="w-4 h-4" /> تصدير جميع بياناتي (JSON)
+          </Button>
+          <Button onClick={signOut} variant="outline" className="gap-1 rounded-xl w-full text-muted-foreground">
+            <LogOut className="w-4 h-4" /> تسجيل الخروج
+          </Button>
+        </motion.div>
+
         {/* Danger Zone */}
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
           className="glass-card p-5 space-y-3 border-destructive/20">
           <h3 className="font-heading font-bold text-destructive text-right flex items-center gap-2 justify-end">
             <span>منطقة الخطر</span>
             <AlertTriangle className="w-4 h-4" />
           </h3>
 
+          <AnimatePresence>
           {!showDeleteConfirm ? (
             <Button onClick={() => setShowDeleteConfirm(true)} variant="outline" className="gap-1 rounded-xl w-full border-destructive/30 text-destructive hover:bg-destructive/10">
-              <Trash2 className="w-4 h-4" /> حذف الحساب
+              <Trash2 className="w-4 h-4" /> حذف الحساب نهائياً
             </Button>
           ) : (
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="space-y-3">
-              <p className="text-xs text-destructive text-right">⚠️ سيتم حذف جميع بياناتك نهائياً. هذا الإجراء لا يمكن التراجع عنه.</p>
+              <div className="bg-destructive/5 p-3 rounded-xl border border-destructive/20 text-right">
+                <p className="text-xs text-destructive font-bold mb-1">⚠️ تحذير نهائي</p>
+                <p className="text-xs text-destructive/80">سيتم حذف جميع بياناتك (أقسام، أسئلة، نتائج، إشعارات) نهائياً. هذا الإجراء لا يمكن التراجع عنه.</p>
+              </div>
               <Input value={deleteText} onChange={e => setDeleteText(e.target.value)}
                 placeholder='اكتب "حذف حسابي" للتأكيد' className="bg-destructive/5 text-right rounded-xl border-destructive/30" />
               <div className="flex gap-2">
@@ -197,6 +270,7 @@ const Settings = () => {
               </div>
             </motion.div>
           )}
+          </AnimatePresence>
         </motion.div>
       </div>
     </div>

@@ -9,9 +9,10 @@ import StarsBackground from "@/components/StarsBackground";
 import { toast } from "sonner";
 import {
   ArrowRight, Check, X, Users, Shield, KeyRound, Copy, Plus,
-  Settings, Bell, MessageCircle, Clock, RefreshCw, Crown
+  Settings, Bell, MessageCircle, Clock, Crown, Bot, Loader2,
+  CheckCircle, XCircle, ArrowUpCircle
 } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 
 interface Profile {
   id: string;
@@ -39,6 +40,15 @@ interface SupportTicket {
   created_at: string;
 }
 
+interface AIDiagnosis {
+  diagnosis: string;
+  suggestedAction: string;
+  suggestedDays?: number;
+  suggestedVersion?: string;
+  replyToUser: string;
+  confidence: string;
+}
+
 const container = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.06 } } };
 const item = { hidden: { opacity: 0, x: 20 }, show: { opacity: 1, x: 0 } };
 
@@ -60,11 +70,14 @@ const Admin = () => {
   const [tab, setTab] = useState<"users" | "codes" | "tickets" | "settings">("users");
   const [genVersion, setGenVersion] = useState<"hay" | "pro">("hay");
   const [genCount, setGenCount] = useState(1);
-  const [activationDays, setActivationDays] = useState(30);
   const [selectedUser, setSelectedUser] = useState<Profile | null>(null);
+  const [userActivationDays, setUserActivationDays] = useState<Record<string, number>>({});
   const [replyText, setReplyText] = useState("");
   const [ticketMessages, setTicketMessages] = useState<any[]>([]);
   const [selectedTicket, setSelectedTicket] = useState<string | null>(null);
+  const [aiDiagnosis, setAiDiagnosis] = useState<AIDiagnosis | null>(null);
+  const [diagnosing, setDiagnosing] = useState(false);
+  const [applyingAction, setApplyingAction] = useState(false);
 
   const fetchUsers = async () => {
     const { data } = await supabase.from("profiles").select("*");
@@ -90,7 +103,6 @@ const Admin = () => {
     if (isAdmin) { fetchUsers(); fetchCodes(); fetchTickets(); }
   }, [isAdmin]);
 
-  // Realtime for support messages
   useEffect(() => {
     if (!isAdmin) return;
     const channel = supabase.channel('admin-support')
@@ -104,18 +116,25 @@ const Admin = () => {
     return () => { supabase.removeChannel(channel); };
   }, [isAdmin, selectedTicket]);
 
+  const getUserDays = (userId: string) => userActivationDays[userId] ?? 30;
+  const setUserDays = (userId: string, days: number) => setUserActivationDays(prev => ({ ...prev, [userId]: days }));
+
   const toggleActivation = async (p: Profile) => {
+    const days = getUserDays(p.id);
     const updates: any = { is_activated: !p.is_activated };
-    if (!p.is_activated && activationDays > 0) {
+    if (!p.is_activated && days > 0) {
       const expires = new Date();
-      expires.setDate(expires.getDate() + activationDays);
+      expires.setDate(expires.getDate() + days);
       updates.activation_expires_at = expires.toISOString();
+    }
+    if (!p.is_activated && days === 0) {
+      updates.activation_expires_at = null;
     }
     if (p.is_activated) {
       updates.activation_expires_at = null;
     }
     await supabase.from("profiles").update(updates).eq("id", p.id);
-    toast.success(p.is_activated ? "تم تعطيل الحساب" : `تم تفعيل الحساب (${activationDays} يوم)`);
+    toast.success(p.is_activated ? "تم تعطيل الحساب" : `تم تفعيل الحساب (${days === 0 ? "دائم" : days + " يوم"})`);
     fetchUsers();
   };
 
@@ -172,8 +191,99 @@ const Admin = () => {
 
   const getDaysRemaining = (expiresAt: string | null) => {
     if (!expiresAt) return null;
-    const days = Math.ceil((new Date(expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-    return days;
+    return Math.ceil((new Date(expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  };
+
+  // AI Diagnose for support ticket
+  const diagnoseWithAI = async () => {
+    if (!selectedTicket) return;
+    const ticket = tickets.find(t => t.id === selectedTicket);
+    const ticketUser = users.find(u => u.user_id === ticket?.user_id);
+    const lastUserMsg = ticketMessages.filter(m => !m.is_admin).pop();
+    
+    if (!lastUserMsg) { toast.error("لا توجد رسائل من المستخدم"); return; }
+    
+    setDiagnosing(true);
+    setAiDiagnosis(null);
+    try {
+      const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-support-diagnose`;
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
+        body: JSON.stringify({
+          userMessage: lastUserMsg.message,
+          userProfile: ticketUser ? {
+            display_name: ticketUser.display_name,
+            is_activated: ticketUser.is_activated,
+            version: ticketUser.version,
+            activation_expires_at: ticketUser.activation_expires_at,
+          } : null,
+          ticketSubject: ticket?.subject,
+        }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        setAiDiagnosis(data);
+      } else {
+        toast.error("خطأ في تحليل AI");
+      }
+    } catch { toast.error("خطأ في الاتصال"); }
+    setDiagnosing(false);
+  };
+
+  // Apply AI suggested action
+  const applyAIAction = async () => {
+    if (!aiDiagnosis || !selectedTicket) return;
+    const ticket = tickets.find(t => t.id === selectedTicket);
+    const ticketUser = users.find(u => u.user_id === ticket?.user_id);
+    if (!ticketUser) { toast.error("لم يتم العثور على المستخدم"); return; }
+
+    setApplyingAction(true);
+    try {
+      const action = aiDiagnosis.suggestedAction;
+      if (action === "activate") {
+        const days = aiDiagnosis.suggestedDays || 30;
+        const updates: any = { is_activated: true };
+        if (days > 0) {
+          const expires = new Date();
+          expires.setDate(expires.getDate() + days);
+          updates.activation_expires_at = expires.toISOString();
+        }
+        await supabase.from("profiles").update(updates).eq("id", ticketUser.id);
+        toast.success(`تم تفعيل حساب ${ticketUser.display_name} (${days} يوم)`);
+      } else if (action === "deactivate") {
+        await supabase.from("profiles").update({ is_activated: false, activation_expires_at: null }).eq("id", ticketUser.id);
+        toast.success("تم تعطيل الحساب");
+      } else if (action === "extend") {
+        const days = aiDiagnosis.suggestedDays || 30;
+        const currentExpiry = ticketUser.activation_expires_at ? new Date(ticketUser.activation_expires_at) : new Date();
+        if (currentExpiry < new Date()) currentExpiry.setTime(Date.now());
+        currentExpiry.setDate(currentExpiry.getDate() + days);
+        await supabase.from("profiles").update({ activation_expires_at: currentExpiry.toISOString(), is_activated: true }).eq("id", ticketUser.id);
+        toast.success(`تم تمديد ${days} يوم`);
+      } else if (action === "upgrade") {
+        await supabase.from("profiles").update({ version: aiDiagnosis.suggestedVersion || "pro" }).eq("id", ticketUser.id);
+        toast.success("تم الترقية إلى PRO");
+      } else if (action === "downgrade") {
+        await supabase.from("profiles").update({ version: "hay" }).eq("id", ticketUser.id);
+        toast.success("تم التخفيض إلى HAY");
+      }
+
+      // Send AI reply
+      if (aiDiagnosis.replyToUser) {
+        await supabase.from("support_messages").insert({
+          ticket_id: selectedTicket,
+          sender_id: user!.id,
+          message: aiDiagnosis.replyToUser,
+          is_admin: true,
+        });
+        fetchTicketMessages(selectedTicket);
+      }
+
+      fetchUsers();
+      setAiDiagnosis(null);
+    } catch { toast.error("خطأ في تطبيق الإجراء"); }
+    setApplyingAction(false);
   };
 
   if (loading) return null;
@@ -228,6 +338,9 @@ const Admin = () => {
                           {daysLeft !== null && daysLeft <= 0 && (
                             <span className="text-destructive font-bold">⚠️ منتهي</span>
                           )}
+                          {!u.activation_expires_at && u.is_activated && (
+                            <span className="text-green-400 text-xs">♾️ دائم</span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -245,12 +358,13 @@ const Admin = () => {
                         <Bell className="w-3 h-3" /> إشعار
                       </Button>
                     </div>
+                    <AnimatePresence>
                     {selectedUser?.id === u.id && (
-                      <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="mt-3 space-y-2 border-t border-border/30 pt-3">
-                        <div className="flex items-center gap-2">
+                      <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="mt-3 space-y-2 border-t border-border/30 pt-3">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <Clock className="w-3.5 h-3.5 text-primary" />
                           <span className="text-xs text-muted-foreground">مدة تفعيل هذا المستخدم:</span>
-                          <select value={activationDays} onChange={e => setActivationDays(parseInt(e.target.value))}
+                          <select value={getUserDays(u.id)} onChange={e => setUserDays(u.id, parseInt(e.target.value))}
                             className="bg-secondary/50 border border-border/50 rounded-lg p-1 text-foreground text-xs">
                             <option value={7}>7 أيام</option>
                             <option value={15}>15 يوم</option>
@@ -275,6 +389,7 @@ const Admin = () => {
                         </Button>
                       </motion.div>
                     )}
+                    </AnimatePresence>
                   </motion.div>
                 );
               })}
@@ -342,13 +457,77 @@ const Admin = () => {
             </motion.div>
           </TabsContent>
 
-          {/* Support Tickets Tab */}
+          {/* Support Tickets Tab with AI */}
           <TabsContent value="tickets" className="space-y-4">
             {selectedTicket ? (
               <div className="space-y-4">
-                <Button variant="ghost" onClick={() => { setSelectedTicket(null); setTicketMessages([]); }} className="gap-1 rounded-xl text-xs">
-                  <ArrowRight className="w-3.5 h-3.5" /> رجوع
-                </Button>
+                <div className="flex items-center justify-between">
+                  <Button variant="ghost" onClick={() => { setSelectedTicket(null); setTicketMessages([]); setAiDiagnosis(null); }} className="gap-1 rounded-xl text-xs">
+                    <ArrowRight className="w-3.5 h-3.5" /> رجوع
+                  </Button>
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={diagnoseWithAI} disabled={diagnosing} className="gap-1 rounded-xl text-xs border-purple-500/30 text-purple-400 hover:bg-purple-500/10">
+                      {diagnosing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bot className="w-3.5 h-3.5" />}
+                      تحليل AI
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => closeTicket(selectedTicket)} className="gap-1 rounded-xl text-xs text-destructive">
+                      <XCircle className="w-3.5 h-3.5" /> إغلاق
+                    </Button>
+                  </div>
+                </div>
+
+                {/* AI Diagnosis Card */}
+                <AnimatePresence>
+                  {aiDiagnosis && (
+                    <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
+                      className="glass-card p-4 border-purple-500/30 space-y-3">
+                      <div className="flex items-center gap-2 justify-end">
+                        <span className="text-sm font-heading text-purple-400">تشخيص AI</span>
+                        <Bot className="w-4 h-4 text-purple-400" />
+                      </div>
+                      <div className="text-right space-y-2">
+                        <div>
+                          <span className="text-xs text-muted-foreground">التشخيص:</span>
+                          <p className="text-sm text-foreground">{aiDiagnosis.diagnosis}</p>
+                        </div>
+                        <div>
+                          <span className="text-xs text-muted-foreground">الإجراء المقترح:</span>
+                          <p className="text-sm text-foreground flex items-center gap-1 justify-end">
+                            {aiDiagnosis.suggestedAction === "activate" && "✅ تفعيل الحساب"}
+                            {aiDiagnosis.suggestedAction === "deactivate" && "❌ تعطيل الحساب"}
+                            {aiDiagnosis.suggestedAction === "extend" && `⏰ تمديد ${aiDiagnosis.suggestedDays} يوم`}
+                            {aiDiagnosis.suggestedAction === "upgrade" && "⬆️ ترقية إلى PRO"}
+                            {aiDiagnosis.suggestedAction === "downgrade" && "⬇️ تخفيض إلى HAY"}
+                            {aiDiagnosis.suggestedAction === "none" && "💬 رد فقط"}
+                            {aiDiagnosis.suggestedAction === "reset_password" && "🔑 إعادة تعيين كلمة المرور"}
+                          </p>
+                        </div>
+                        <div>
+                          <span className="text-xs text-muted-foreground">الرد المقترح:</span>
+                          <p className="text-sm text-foreground bg-secondary/30 p-2 rounded-lg">{aiDiagnosis.replyToUser}</p>
+                        </div>
+                        <div className="flex items-center gap-1 justify-end">
+                          <span className="text-xs text-muted-foreground">الثقة:</span>
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${
+                            aiDiagnosis.confidence === "high" ? "bg-green-500/20 text-green-400" :
+                            aiDiagnosis.confidence === "medium" ? "bg-yellow-500/20 text-yellow-400" :
+                            "bg-red-500/20 text-red-400"
+                          }`}>{aiDiagnosis.confidence === "high" ? "عالية" : aiDiagnosis.confidence === "medium" ? "متوسطة" : "منخفضة"}</span>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button onClick={() => setAiDiagnosis(null)} variant="outline" size="sm" className="flex-1 rounded-xl text-xs">
+                          <XCircle className="w-3 h-3 ml-1" /> رفض
+                        </Button>
+                        <Button onClick={applyAIAction} disabled={applyingAction} size="sm" className="flex-1 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs gap-1">
+                          {applyingAction ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
+                          موافقة وتطبيق
+                        </Button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
                 <div className="space-y-2 max-h-80 overflow-y-auto">
                   {ticketMessages.map((m: any) => (
                     <div key={m.id} className={`glass-card p-3 ${m.is_admin ? "border-primary/30 mr-6" : "ml-6"}`}>
@@ -371,19 +550,24 @@ const Admin = () => {
               </div>
             ) : (
               <motion.div variants={container} initial="hidden" animate="show" className="space-y-2">
-                {tickets.map(t => (
+                {tickets.map(t => {
+                  const ticketUser = users.find(u => u.user_id === t.user_id);
+                  return (
                   <motion.div key={t.id} variants={item}
                     className="glass-card p-4 flex items-center justify-between cursor-pointer hover:border-primary/30 transition-colors"
                     onClick={() => { setSelectedTicket(t.id); fetchTicketMessages(t.id); }}>
                     <div>
                       <p className="font-heading font-bold text-foreground text-sm">{t.subject}</p>
-                      <p className="text-xs text-muted-foreground">{new Date(t.created_at).toLocaleString("ar")}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {ticketUser?.display_name || "مستخدم"} · {new Date(t.created_at).toLocaleDateString("ar")}
+                      </p>
                     </div>
                     <span className={`px-2 py-1 rounded-full text-xs font-bold ${t.status === "open" ? "bg-green-500/20 text-green-400" : "bg-muted text-muted-foreground"}`}>
                       {t.status === "open" ? "مفتوح" : "مغلق"}
                     </span>
                   </motion.div>
-                ))}
+                  );
+                })}
                 {tickets.length === 0 && (
                   <div className="glass-card p-8 text-center">
                     <MessageCircle className="w-10 h-10 text-muted-foreground mx-auto mb-3 opacity-50" />
@@ -396,25 +580,6 @@ const Admin = () => {
 
           {/* Settings Tab */}
           <TabsContent value="settings" className="space-y-4">
-            <div className="glass-card p-5 space-y-4">
-              <h3 className="font-heading font-bold text-foreground text-right">إعدادات التفعيل</h3>
-              <div className="space-y-3">
-                <div>
-                  <label className="text-xs text-muted-foreground block mb-1">مدة التفعيل الافتراضية</label>
-                  <select value={activationDays} onChange={e => setActivationDays(parseInt(e.target.value))}
-                    className="w-full bg-secondary/50 border border-border/50 rounded-xl p-3 text-foreground text-right">
-                    <option value={7}>7 أيام</option>
-                    <option value={15}>15 يوم</option>
-                    <option value={30}>30 يوم (افتراضي)</option>
-                    <option value={90}>3 أشهر</option>
-                    <option value={180}>6 أشهر</option>
-                    <option value={365}>سنة كاملة</option>
-                    <option value={0}>دائم (بدون انتهاء)</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
             <div className="glass-card p-5 space-y-4">
               <h3 className="font-heading font-bold text-foreground text-right">إرسال إشعار جماعي</h3>
               <Input id="notif-title" placeholder="عنوان الإشعار" className="bg-secondary/50 text-right rounded-xl" />
