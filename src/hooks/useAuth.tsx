@@ -34,13 +34,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const fetchProfile = useCallback(async (userId: string) => {
     const { data: p } = await supabase.from("profiles").select("*").eq("user_id", userId).single();
     if (p) {
+      const pRaw = p as any;
       setProfile({
         display_name: p.display_name,
         is_activated: p.is_activated,
-        tos_accepted: (p as any).tos_accepted ?? false,
+        // If the column is missing in DB (undefined), we set it to true to avoid a UI lock.
+        tos_accepted: pRaw.tos_accepted === undefined ? true : pRaw.tos_accepted,
         activation_code: p.activation_code,
-        version: (p as any).version ?? "hay",
-        activation_expires_at: (p as any).activation_expires_at ?? null
+        version: pRaw.version ?? "hay",
+        activation_expires_at: pRaw.activation_expires_at ?? null
       });
       // Check if activation expired
       const expiresAt = (p as any).activation_expires_at;
