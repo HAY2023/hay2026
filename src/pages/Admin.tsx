@@ -139,25 +139,87 @@ const Admin = () => {
     return () => { supabase.removeChannel(channel); };
   }, [isAdmin, selectedTicket]);
 
-  const getUserDays = (userId: string) => userActivationDays[userId] ?? 30;
-  const setUserDays = (userId: string, days: number) => setUserActivationDays(prev => ({ ...prev, [userId]: days }));
+  const getActivationWindow = (p: Profile): ActivationWindow => {
+    const today = toDateInputValue(new Date());
+    return userActivationWindows[p.id] ?? {
+      startDate: p.activation_started_at ? toDateInputValue(p.activation_started_at) : today,
+      endDate: p.activation_expires_at ? toDateInputValue(p.activation_expires_at) : addDaysToDateValue(today, 30),
+      permanent: !p.activation_expires_at,
+    };
+  };
+
+  const setActivationWindow = (p: Profile, patch: Partial<ActivationWindow>) => {
+    setUserActivationWindows(prev => ({
+      ...prev,
+      [p.id]: {
+        ...getActivationWindow(p),
+        ...patch,
+      },
+    }));
+  };
+
+  const getActivationStatus = (p: Profile) => {
+    if (!p.is_activated) return "inactive";
+
+    const now = new Date();
+    const startsAt = p.activation_started_at ? new Date(p.activation_started_at) : null;
+    const expiresAt = p.activation_expires_at ? new Date(p.activation_expires_at) : null;
+
+    if (startsAt && startsAt > now) return "scheduled";
+    if (expiresAt && expiresAt < now) return "expired";
+    if (!expiresAt) return "permanent";
+    return "active";
+  };
+
+  const saveActivationWindow = async (p: Profile) => {
+    const window = getActivationWindow(p);
+    if (!window.startDate) {
+      toast.error("حدد تاريخ بداية التفعيل");
+      return;
+    }
+    if (!window.permanent && !window.endDate) {
+      toast.error("حدد تاريخ نهاية التفعيل");
+      return;
+    }
+    if (!window.permanent && window.endDate < window.startDate) {
+      toast.error("تاريخ النهاية يجب أن يكون بعد البداية");
+      return;
+    }
+
+    const updates: any = {
+      is_activated: true,
+      activation_started_at: toStartOfDayIso(window.startDate),
+      activation_expires_at: window.permanent ? null : toEndOfDayIso(window.endDate),
+    };
+
+    const { error } = await supabase.from("profiles").update(updates).eq("id", p.id);
+    if (error) {
+      toast.error(error.message);
+      return;
+    }
+
+    toast.success(window.permanent ? "تم تفعيل الحساب بشكل دائم" : `تم ضبط التفعيل من ${window.startDate} إلى ${window.endDate}`);
+    fetchUsers();
+  };
 
   const toggleActivation = async (p: Profile) => {
-    const days = getUserDays(p.id);
-    const updates: any = { is_activated: !p.is_activated };
-    if (!p.is_activated && days > 0) {
-      const expires = new Date();
-      expires.setDate(expires.getDate() + days);
-      updates.activation_expires_at = expires.toISOString();
+    if (!p.is_activated) {
+      await saveActivationWindow(p);
+      return;
     }
-    if (!p.is_activated && days === 0) {
-      updates.activation_expires_at = null;
+
+    const { error } = await supabase.from("profiles").update({
+      is_activated: false,
+      activation_started_at: null,
+      activation_expires_at: null,
+    }).eq("id", p.id);
+
+    if (error) {
+      toast.error(error.message);
+      return;
     }
-    if (p.is_activated) {
-      updates.activation_expires_at = null;
-    }
-    await supabase.from("profiles").update(updates).eq("id", p.id);
-    toast.success(p.is_activated ? "تم تعطيل الحساب" : `تم تفعيل الحساب (${days === 0 ? "دائم" : days + " يوم"})`);
+
+    toast.success("تم تعطيل الحساب");
     fetchUsers();
   };
 
@@ -283,23 +345,37 @@ const Admin = () => {
       const action = aiDiagnosis.suggestedAction;
       if (action === "activate") {
         const days = aiDiagnosis.suggestedDays || 30;
-        const updates: any = { is_activated: true };
+        const activationStart = new Date();
+        const updates: any = {
+          is_activated: true,
+          activation_started_at: activationStart.toISOString(),
+        };
         if (days > 0) {
-          const expires = new Date();
+          const expires = new Date(activationStart);
           expires.setDate(expires.getDate() + days);
           updates.activation_expires_at = expires.toISOString();
+        } else {
+          updates.activation_expires_at = null;
         }
         await supabase.from("profiles").update(updates).eq("id", ticketUser.id);
         toast.success(`تم تفعيل حساب ${ticketUser.display_name} (${days} يوم)`);
       } else if (action === "deactivate") {
-        await supabase.from("profiles").update({ is_activated: false, activation_expires_at: null }).eq("id", ticketUser.id);
+        await supabase.from("profiles").update({
+          is_activated: false,
+          activation_started_at: null,
+          activation_expires_at: null,
+        }).eq("id", ticketUser.id);
         toast.success("تم تعطيل الحساب");
       } else if (action === "extend") {
         const days = aiDiagnosis.suggestedDays || 30;
         const currentExpiry = ticketUser.activation_expires_at ? new Date(ticketUser.activation_expires_at) : new Date();
         if (currentExpiry < new Date()) currentExpiry.setTime(Date.now());
         currentExpiry.setDate(currentExpiry.getDate() + days);
-        await supabase.from("profiles").update({ activation_expires_at: currentExpiry.toISOString(), is_activated: true }).eq("id", ticketUser.id);
+        await supabase.from("profiles").update({
+          activation_started_at: ticketUser.activation_started_at ?? new Date().toISOString(),
+          activation_expires_at: currentExpiry.toISOString(),
+          is_activated: true,
+        }).eq("id", ticketUser.id);
         toast.success(`تم تمديد ${days} يوم`);
       } else if (action === "upgrade") {
         await supabase.from("profiles").update({ version: aiDiagnosis.suggestedVersion || "pro" }).eq("id", ticketUser.id);
@@ -361,25 +437,38 @@ const Admin = () => {
 
             <motion.div variants={container} initial="hidden" animate="show" className="space-y-3">
               {users.map((u) => {
+                const status = getActivationStatus(u);
                 const daysLeft = getDaysRemaining(u.activation_expires_at);
+                const activationWindow = getActivationWindow(u);
                 return (
                   <motion.div key={u.id} variants={item} className="glass-card p-4">
                     <div className="flex items-center justify-between mb-2">
                       <div className="min-w-0 flex-1">
                         <p className="font-heading font-bold text-foreground truncate">{u.display_name || "بدون اسم"}</p>
                         <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
-                          <span>{u.is_activated ? "✅ مفعّل" : "⏳ غير مفعّل"}</span>
+                          <span>
+                            {status === "active" && "✅ مفعّل"}
+                            {status === "permanent" && "♾️ مفعّل دائم"}
+                            {status === "scheduled" && "⏳ مجدول"}
+                            {status === "expired" && "⚠️ منتهي"}
+                            {status === "inactive" && "⭕ غير مفعّل"}
+                          </span>
                           {u.version && <span className={`px-2 py-0.5 rounded-full font-bold ${u.version === "pro" ? "bg-purple-500/20 text-purple-400" : "bg-primary/10 text-primary"}`}>{u.version.toUpperCase()}</span>}
-                          {daysLeft !== null && daysLeft > 0 && (
+                          {u.activation_started_at && (
+                            <span>من {formatDate(u.activation_started_at)}</span>
+                          )}
+                          {u.activation_expires_at ? (
+                            <span>إلى {formatDate(u.activation_expires_at)}</span>
+                          ) : (
+                            status !== "inactive" && <span className="text-green-400 text-xs">إلى دائم</span>
+                          )}
+                          {status === "active" && daysLeft !== null && daysLeft > 0 && (
                             <span className={`flex items-center gap-1 ${daysLeft <= 7 ? "text-destructive" : "text-muted-foreground"}`}>
                               <Clock className="w-3 h-3" /> {daysLeft} يوم
                             </span>
                           )}
-                          {daysLeft !== null && daysLeft <= 0 && (
-                            <span className="text-destructive font-bold">⚠️ منتهي</span>
-                          )}
-                          {!u.activation_expires_at && u.is_activated && (
-                            <span className="text-green-400 text-xs">♾️ دائم</span>
+                          {status === "expired" && (
+                            <span className="text-destructive font-bold">انتهت الصلاحية</span>
                           )}
                         </div>
                       </div>
