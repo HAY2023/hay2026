@@ -7,11 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import StarsBackground from "@/components/StarsBackground";
 import { toast } from "sonner";
-import {
-  ArrowRight, Check, X, Users, Shield, KeyRound, Copy, Plus,
-  Settings, Bell, MessageCircle, Clock, Crown, Bot, Loader2,
-  CheckCircle, XCircle, ArrowUpCircle
-} from "lucide-react";
+import { Shield, Users, Crown, Key, Trash2, ShieldAlert, CheckCircle, Search, Mail, Copy, Check, Info, Bell, Trash, Menu, KeySquare, HelpCircle, X, LogOut, Moon, Sun, Monitor, Menu as MenuIcon, Plus, Send, Clock, BookOpen, UserMinus, ArrowRight, KeyRound, MessageCircle, Settings, Loader2, Bot, XCircle, ArrowUpCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface Profile {
@@ -68,8 +64,9 @@ const Admin = () => {
   const [codes, setCodes] = useState<ActivationCode[]>([]);
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [tab, setTab] = useState<"users" | "codes" | "tickets" | "settings">("users");
-  const [genVersion, setGenVersion] = useState<"hay" | "pro">("hay");
+  const [genVersion, setGenVersion] = useState<"hay" | "pro">("pro"); // Changed default to "pro"
   const [genCount, setGenCount] = useState(1);
+  const [genDuration, setGenDuration] = useState(30); // Added genDuration state
   const [selectedUser, setSelectedUser] = useState<Profile | null>(null);
   const [userActivationDays, setUserActivationDays] = useState<Record<string, number>>({});
   const [replyText, setReplyText] = useState("");
@@ -144,6 +141,22 @@ const Admin = () => {
     fetchUsers();
   };
 
+  const revokeStatus = async (p: Profile) => {
+    if (!confirm(`هل أنت متأكد من سحب صلاحيات PRO من ${p.display_name}؟`)) return;
+    const { error } = await supabase.rpc("revoke_pro_status", { target_user_id: p.user_id });
+    if (error) { toast.error(error.message); return; }
+    toast.success("تم سحب الصلاحيات وتعطيل الحساب");
+    fetchUsers();
+  };
+
+  const deleteUserPermanently = async (p: Profile) => {
+    if (!confirm(`تحذير خطير: هل أنت متأكد من حذف حساب ${p.display_name} نهائياً؟ لا يمكن التراجع!`)) return;
+    const { error } = await supabase.rpc("delete_user_permanently", { target_user_id: p.user_id });
+    if (error) { toast.error(error.message); return; }
+    toast.success("تم حذف الحساب نهائياً");
+    fetchUsers();
+  };
+
   const sendNotification = async (userId: string, title: string, message: string, type: string = "info") => {
     await supabase.from("notifications").insert({ user_id: userId, title, message, type });
   };
@@ -152,6 +165,7 @@ const Admin = () => {
     const newCodes = Array.from({ length: genCount }, () => ({
       code: generateCode(genVersion),
       version: genVersion,
+      duration_days: genDuration
     }));
     const { error } = await supabase.from("activation_codes").insert(newCodes);
     if (error) { toast.error("خطأ في إنشاء الأكواد"); return; }
@@ -200,9 +214,9 @@ const Admin = () => {
     const ticket = tickets.find(t => t.id === selectedTicket);
     const ticketUser = users.find(u => u.user_id === ticket?.user_id);
     const lastUserMsg = ticketMessages.filter(m => !m.is_admin).pop();
-    
+
     if (!lastUserMsg) { toast.error("لا توجد رسائل من المستخدم"); return; }
-    
+
     setDiagnosing(true);
     setAiDiagnosis(null);
     try {
@@ -359,36 +373,48 @@ const Admin = () => {
                       </Button>
                     </div>
                     <AnimatePresence>
-                    {selectedUser?.id === u.id && (
-                      <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="mt-3 space-y-2 border-t border-border/30 pt-3">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <Clock className="w-3.5 h-3.5 text-primary" />
-                          <span className="text-xs text-muted-foreground">مدة تفعيل هذا المستخدم:</span>
-                          <select value={getUserDays(u.id)} onChange={e => setUserDays(u.id, parseInt(e.target.value))}
-                            className="bg-secondary/50 border border-border/50 rounded-lg p-1 text-foreground text-xs">
-                            <option value={7}>7 أيام</option>
-                            <option value={15}>15 يوم</option>
-                            <option value={30}>30 يوم</option>
-                            <option value={90}>3 أشهر</option>
-                            <option value={180}>6 أشهر</option>
-                            <option value={365}>سنة</option>
-                            <option value={0}>دائم</option>
-                          </select>
-                        </div>
-                        <Input id={`notif-title-${u.id}`} placeholder="عنوان الإشعار" className="bg-secondary/50 text-right rounded-xl text-xs h-9" />
-                        <Input id={`notif-msg-${u.id}`} placeholder="نص الإشعار" className="bg-secondary/50 text-right rounded-xl text-xs h-9" />
-                        <Button size="sm" onClick={async () => {
-                          const title = (document.getElementById(`notif-title-${u.id}`) as HTMLInputElement)?.value;
-                          const msg = (document.getElementById(`notif-msg-${u.id}`) as HTMLInputElement)?.value;
-                          if (!title || !msg) { toast.error("أكمل الحقول"); return; }
-                          await sendNotification(u.user_id, title, msg, "info");
-                          toast.success("تم إرسال الإشعار");
-                          setSelectedUser(null);
-                        }} className="gold-gradient text-background gap-1 rounded-xl text-xs">
-                          <Bell className="w-3 h-3" /> إرسال إشعار
-                        </Button>
-                      </motion.div>
-                    )}
+                      {selectedUser?.id === u.id && (
+                        <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="mt-3 space-y-2 border-t border-border/30 pt-3">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Clock className="w-3.5 h-3.5 text-primary" />
+                            <span className="text-xs text-muted-foreground">مدة تفعيل هذا المستخدم:</span>
+                            <select value={getUserDays(u.id)} onChange={e => setUserDays(u.id, parseInt(e.target.value))}
+                              className="bg-secondary/50 border border-border/50 rounded-lg p-1 text-foreground text-xs">
+                              <option value={7}>7 أيام</option>
+                              <option value={15}>15 يوم</option>
+                              <option value={30}>30 يوم</option>
+                              <option value={90}>3 أشهر</option>
+                              <option value={180}>6 أشهر</option>
+                              <option value={365}>سنة</option>
+                              <option value={0}>دائم</option>
+                            </select>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button size="sm" variant="outline" onClick={() => revokeStatus(u)} className="flex-1 rounded-xl text-xs gap-1 text-purple-400 border-purple-500/30">
+                              <Shield className="w-3 h-3" /> سحب PRO
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => deleteUserPermanently(u)} className="flex-1 rounded-xl text-xs gap-1 text-destructive border-destructive/30">
+                              <Trash className="w-3 h-3" /> حذف نهائي
+                            </Button>
+                          </div>
+
+                          <div className="space-y-2 pt-2 border-t border-border/50">
+                            <span className="text-xs text-muted-foreground">إرسال إشعار يدوي:</span>
+                            <Input id={`notif-title-${u.id}`} placeholder="عنوان الإشعار" className="bg-secondary/50 text-right rounded-xl text-xs h-9" />
+                            <Input id={`notif-msg-${u.id}`} placeholder="نص الإشعار" className="bg-secondary/50 text-right rounded-xl text-xs h-9" />
+                            <Button size="sm" onClick={async () => {
+                              const title = (document.getElementById(`notif-title-${u.id}`) as HTMLInputElement)?.value;
+                              const msg = (document.getElementById(`notif-msg-${u.id}`) as HTMLInputElement)?.value;
+                              if (!title || !msg) { toast.error("أكمل الحقول"); return; }
+                              await sendNotification(u.user_id, title, msg, "info");
+                              toast.success("تم إرسال الإشعار");
+                              setSelectedUser(null);
+                            }} className="gold-gradient text-background gap-1 rounded-xl text-xs w-full mt-2">
+                              <Bell className="w-3 h-3" /> إرسال إشعار
+                            </Button>
+                          </div>
+                        </motion.div>
+                      )}
                     </AnimatePresence>
                   </motion.div>
                 );
@@ -420,6 +446,18 @@ const Admin = () => {
                   <Input type="number" value={genCount} onChange={e => setGenCount(Math.max(1, parseInt(e.target.value) || 1))}
                     min={1} max={50} className="w-20 bg-secondary/50 rounded-xl" />
                 </div>
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1">المدة</label>
+                  <select value={genDuration} onChange={e => setGenDuration(parseInt(e.target.value))}
+                    className="bg-secondary/50 border border-border/50 rounded-xl p-2.5 text-foreground">
+                    <option value={7}>أسبوع</option>
+                    <option value={30}>شهر</option>
+                    <option value={90}>3 أشهر</option>
+                    <option value={180}>6 أشهر</option>
+                    <option value={365}>سنة</option>
+                    <option value={0}>دائم</option>
+                  </select>
+                </div>
                 <Button onClick={generateCodes} className="gold-gradient text-background gap-1 rounded-xl shadow-lg shadow-primary/15">
                   <Plus className="w-4 h-4" /> إنشاء
                 </Button>
@@ -432,6 +470,9 @@ const Admin = () => {
                   <div className="flex items-center gap-2 min-w-0 flex-1">
                     <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${c.version === "pro" ? "bg-purple-500/20 text-purple-400" : "bg-primary/10 text-primary"}`}>
                       {c.version.toUpperCase()}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      ({(c as any).duration_days === 0 ? "دائم" : ((c as any).duration_days + " يوم")})
                     </span>
                     <code className="text-sm font-mono text-foreground truncate" dir="ltr">{c.code}</code>
                     {c.is_used && <span className="text-xs text-muted-foreground">✅ مستخدم</span>}
@@ -508,11 +549,10 @@ const Admin = () => {
                         </div>
                         <div className="flex items-center gap-1 justify-end">
                           <span className="text-xs text-muted-foreground">الثقة:</span>
-                          <span className={`text-xs px-2 py-0.5 rounded-full ${
-                            aiDiagnosis.confidence === "high" ? "bg-green-500/20 text-green-400" :
+                          <span className={`text-xs px-2 py-0.5 rounded-full ${aiDiagnosis.confidence === "high" ? "bg-green-500/20 text-green-400" :
                             aiDiagnosis.confidence === "medium" ? "bg-yellow-500/20 text-yellow-400" :
-                            "bg-red-500/20 text-red-400"
-                          }`}>{aiDiagnosis.confidence === "high" ? "عالية" : aiDiagnosis.confidence === "medium" ? "متوسطة" : "منخفضة"}</span>
+                              "bg-red-500/20 text-red-400"
+                            }`}>{aiDiagnosis.confidence === "high" ? "عالية" : aiDiagnosis.confidence === "medium" ? "متوسطة" : "منخفضة"}</span>
                         </div>
                       </div>
                       <div className="flex gap-2">
@@ -553,19 +593,19 @@ const Admin = () => {
                 {tickets.map(t => {
                   const ticketUser = users.find(u => u.user_id === t.user_id);
                   return (
-                  <motion.div key={t.id} variants={item}
-                    className="glass-card p-4 flex items-center justify-between cursor-pointer hover:border-primary/30 transition-colors"
-                    onClick={() => { setSelectedTicket(t.id); fetchTicketMessages(t.id); }}>
-                    <div>
-                      <p className="font-heading font-bold text-foreground text-sm">{t.subject}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {ticketUser?.display_name || "مستخدم"} · {new Date(t.created_at).toLocaleDateString("ar")}
-                      </p>
-                    </div>
-                    <span className={`px-2 py-1 rounded-full text-xs font-bold ${t.status === "open" ? "bg-green-500/20 text-green-400" : "bg-muted text-muted-foreground"}`}>
-                      {t.status === "open" ? "مفتوح" : "مغلق"}
-                    </span>
-                  </motion.div>
+                    <motion.div key={t.id} variants={item}
+                      className="glass-card p-4 flex items-center justify-between cursor-pointer hover:border-primary/30 transition-colors"
+                      onClick={() => { setSelectedTicket(t.id); fetchTicketMessages(t.id); }}>
+                      <div>
+                        <p className="font-heading font-bold text-foreground text-sm">{t.subject}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {ticketUser?.display_name || "مستخدم"} · {new Date(t.created_at).toLocaleDateString("ar")}
+                        </p>
+                      </div>
+                      <span className={`px-2 py-1 rounded-full text-xs font-bold ${t.status === "open" ? "bg-green-500/20 text-green-400" : "bg-muted text-muted-foreground"}`}>
+                        {t.status === "open" ? "مفتوح" : "مغلق"}
+                      </span>
+                    </motion.div>
                   );
                 })}
                 {tickets.length === 0 && (
