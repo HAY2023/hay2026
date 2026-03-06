@@ -5,108 +5,214 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+const MODEL = "google/gemini-3-flash-preview";
+const DZEXAMS_URL = "https://www.dzexams.com/";
+
+type IncomingRequest = {
+  topic?: string;
+  count?: number;
+  type?: string;
+  level?: string;
+  aiMode?: "algerian" | "general";
+};
+
+type AiQuestion = {
+  question_text?: string;
+  options?: unknown;
+  correct_answer?: unknown;
+  time_limit?: unknown;
+  matching_pairs?: unknown;
+};
+
+type AiPayload = {
+  questions?: AiQuestion[];
+  lessons?: unknown;
+  summary?: unknown;
+};
+
+const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+
+const asStringArray = (value: unknown): string[] => {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((item) => String(item).trim())
+    .filter((item) => item.length > 0);
+};
+
+const toCorrectAnswer = (value: unknown): string => {
+  if (typeof value === "string") return value.trim();
+
+  if (value && typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return "";
+    }
+  }
+
+  return "";
+};
+
+const parseJsonLoose = (raw: string): unknown => {
+  const trimmed = raw.trim();
+
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    // Fallback below.
+  }
+
+  const withoutFence = trimmed
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/, "");
+
+  try {
+    return JSON.parse(withoutFence);
+  } catch {
+    const start = withoutFence.indexOf("{");
+    const end = withoutFence.lastIndexOf("}");
+
+    if (start !== -1 && end !== -1 && end > start) {
+      return JSON.parse(withoutFence.slice(start, end + 1));
+    }
+
+    throw new Error("Could not parse AI JSON response");
+  }
+};
+
+const extractPayload = (data: unknown): AiPayload => {
+  const typed = data as Record<string, unknown>;
+  const choices = typed?.choices as Array<Record<string, unknown>> | undefined;
+  const message = choices?.[0]?.message as Record<string, unknown> | undefined;
+
+  const toolCalls = message?.tool_calls as Array<Record<string, unknown>> | undefined;
+  const firstToolCall = toolCalls?.[0] as Record<string, unknown> | undefined;
+  const functionObj = firstToolCall?.function as Record<string, unknown> | undefined;
+  const args = functionObj?.arguments;
+
+  if (typeof args === "string" && args.trim()) {
+    return parseJsonLoose(args) as AiPayload;
+  }
+
+  const content = message?.content;
+  if (typeof content === "string" && content.trim()) {
+    return parseJsonLoose(content) as AiPayload;
+  }
+
+  if (Array.isArray(content)) {
+    const text = content
+      .map((part) => {
+        if (part && typeof part === "object" && "text" in part) {
+          return String((part as { text: unknown }).text ?? "");
+        }
+
+        return "";
+      })
+      .join(" ")
+      .trim();
+
+    if (text) {
+      return parseJsonLoose(text) as AiPayload;
+    }
+  }
+
+  throw new Error("No structured payload returned by AI");
+};
+
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const { topic, count, type, level, aiMode } = await req.json();
+    const body = (await req.json()) as IncomingRequest;
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
-    const levelMap: Record<string, string> = {
-      "ابتدائي": "مستوى ابتدائي (سن 6-11)",
-      "متوسط": "مستوى متوسط (سن 11-15)",
-      "ثانوي": "مستوى ثانوي وبكالوريا (سن 15-18)",
-      "جامعي": "مستوى جامعي",
-    };
-    const levelText = levelMap[level] || "جميع المستويات";
+    const topic = typeof body.topic === "string" ? body.topic.trim() : "";
+    if (!topic) throw new Error("Topic is required");
 
-    let questionType = "اختيار من متعدد (4 خيارات)";
-    let extraInstructions = "";
-    
-    if (type === "text") {
-      questionType = "كتابة (بدون خيارات)";
-    } else if (type === "matching") {
-      questionType = "ربط بين جملتين";
-      extraInstructions = `لأسئلة الربط: أنشئ أزواجاً من العناصر المتطابقة.
-      في حقل options ضع العناصر في العمود الأيسر (مثلاً: ["الجزائر", "تونس", "المغرب"])
-      في حقل correct_answer ضع الأزواج الصحيحة بصيغة JSON مثل: {"الجزائر":"الدينار","تونس":"الدينار","المغرب":"الدرهم"}
-      في حقل matching_pairs ضع العناصر في العمود الأيمن (مثلاً: ["الدينار", "الدرهم", "الدينار"])`;
-    }
+    const requestedType = typeof body.type === "string" ? body.type : "multiple_choice";
+    const questionCount = clamp(Math.round(Number(body.count ?? 5) || 5), 1, 30);
+    const level = typeof body.level === "string" && body.level.trim() ? body.level.trim() : "ط¹ط§ظ…";
+    const isAlgerian = body.aiMode === "algerian";
 
-    const isAlgerian = aiMode === "algerian";
+    const questionTypeLabel =
+      requestedType === "text"
+        ? "short_answer"
+        : requestedType === "matching"
+          ? "matching"
+          : "multiple_choice";
 
-    const systemPrompt = isAlgerian
-<<<<<<< HEAD
-      ? "أنت أستاذ جزائري خبير في المنهج الدراسي الرسمي. اجعل إجاباتك دقيقة وحسب البرنامج الجزائري."
-      : "أنت محرك أسئلة ومساعد تعليمي متقدم باللغة العربية. اجعل إجاباتك دقيقة وشاملة.";
+    const sourceConstraint = isAlgerian
+      ? `Primary reference for Algerian exam style: ${DZEXAMS_URL}. Use this style only, and avoid non-Algerian exam phrasing.`
+      : "Use clear educational Arabic with consistent difficulty.";
 
-    let userPrompt = "";
-    let expectedOutput = "";
+    const systemPrompt = `You are an Arabic educational content generator. ${sourceConstraint}`;
 
-    if (type === 'lessons_list') {
-      userPrompt = `أعطني قائمة بأهم الدروس المقررة في مادة "${topic}" لـ ${levelMap[level] || level}.
-المطلوب: قائمة بأسماء الدروس فقط (بين 5 إلى 10 دروس أساسية).`;
-      expectedOutput = `{"lessons": ["اسم الدرس الأول", "اسم الدرس الثاني"]}`;
-    } else if (type === 'lesson_summary') {
-      userPrompt = `قم بإعداد ملخص شامل وذكي لدرس "${topic}" لـ ${levelMap[level] || level}.
-المطلوب: ملخص مقسم إلى نقاط واضحة، سهلة الفهم، تغطي جميع الأفكار الأساسية للدرس.`;
-      expectedOutput = `{"summary": "النص الكامل للملخص هنا..."}`;
-    } else {
-      userPrompt = `موضوع الأسئلة: ${topic}
-المستوى: ${levelMap[level] || level}
-العدد المطلوب: ${count || 10}
-نوع الأسئلة: ${type === 'text' ? 'كتابية' : 'اختيار من متعدد'}
+    const matchingHint =
+      requestedType === "matching"
+        ? "For matching questions: set options as left column items, matching_pairs as right column items, and encode pair mapping in correct_answer as a JSON string object."
+        : "";
 
-ملاحظة هامة: يجب أن تكون الأسئلة باللغة العربية الفصحى.`;
-      expectedOutput = `{"questions": [{"question_text": "...", "options": ["...", "..."], "correct_answer": "...", "time_limit": 30}]}`;
-    }
+    const multipleChoiceHint =
+      requestedType === "multiple_choice"
+        ? "For each question, provide exactly 4 options and one correct answer that matches one option exactly."
+        : "";
 
-    // 3. Direct Gemini Call
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
-
-    const geminiResp = await fetch(geminiUrl, {
-=======
-      ? `أنت مولد أسئلة اختبارات تعليمية باللغة العربية متخصص حصرياً في المنهج الدراسي الجزائري.
-ركّز فقط على المواضيع المتعلقة بالتعليم في الجزائر والمنهج الجزائري الرسمي.
-استخدم المصطلحات والمفاهيم المعتمدة في الكتب المدرسية الجزائرية.
-أنشئ أسئلة بنفس أسلوب ونمط الامتحانات الرسمية الجزائرية الموجودة على موقع dzexams.com.
-اعتمد على نماذج البكالوريا والشهادات الرسمية الجزائرية كمرجع.
-أنشئ أسئلة دقيقة وتعليمية ومناسبة للمستوى المطلوب حسب البرنامج الجزائري.
-${extraInstructions}`
-      : `أنت مولد أسئلة اختبارات تعليمية قوي ومتقدم باللغة العربية.
-أنشئ أسئلة عميقة ودقيقة وشاملة عن أي موضوع.
-ركّز على الجودة العالية والتنوع في الأسئلة مع تغطية جوانب مختلفة من الموضوع.
-اجعل الأسئلة تحفّز التفكير النقدي والتحليلي.
-${extraInstructions}`;
-
-    const userPrompt = isAlgerian
-      ? `أنشئ ${count || 5} أسئلة عن موضوع "${topic}" من نوع ${questionType} لمستوى ${levelText} حسب المنهج الدراسي الجزائري بأسلوب امتحانات dzexams.com.\n\nكل سؤال يجب أن يكون بهذا الشكل بالضبط.`
-      : `أنشئ ${count || 5} أسئلة متقدمة وعميقة عن موضوع "${topic}" من نوع ${questionType}.\n\nكل سؤال يجب أن يكون بهذا الشكل بالضبط.`;
+    const userPrompt =
+      requestedType === "lessons_list"
+        ? [
+            `Task: list key lessons for topic "${topic}" at level "${level}" in the Algerian curriculum.`,
+            "Output language: Arabic.",
+            isAlgerian ? `Style reference: ${DZEXAMS_URL}.` : "",
+            "Return 5 to 10 concise lesson titles.",
+            'Return strictly JSON: {"lessons":["..."]}.',
+          ]
+            .filter(Boolean)
+            .join("\n")
+        : requestedType === "lesson_summary"
+          ? [
+              `Task: write a clear study summary for lesson/topic "${topic}" at level "${level}".`,
+              "Output language: Arabic.",
+              isAlgerian ? `Use Algerian curriculum framing and style from ${DZEXAMS_URL}.` : "",
+              'Return strictly JSON: {"summary":"..."}.',
+            ]
+              .filter(Boolean)
+              .join("\n")
+          : [
+              `Task: generate ${questionCount} ${questionTypeLabel} exam questions in Arabic.`,
+              `Topic: "${topic}"`,
+              `Level: "${level}"`,
+              isAlgerian ? `Reference and style must follow ${DZEXAMS_URL} only.` : "",
+              isAlgerian ? "Do not use non-Algerian curriculum framing." : "",
+              "Questions must be educational, accurate, and level-appropriate.",
+              multipleChoiceHint,
+              matchingHint,
+              'Return strictly JSON: {"questions":[{"question_text":"...","options":["..."],"correct_answer":"...","time_limit":30,"matching_pairs":["..."]}] }.',
+              "For non-matching questions, omit matching_pairs.",
+            ]
+              .filter(Boolean)
+              .join("\n");
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
->>>>>>> 57102494f92267d7a5cb68389e0ab2d8a1b990fc
       method: "POST",
       headers: {
         Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-<<<<<<< HEAD
-        contents: [{ parts: [{ text: `${systemPrompt}\n\n${userPrompt}\n\nيجب أن يكون الرد JSON فقط بهذا الهيكل:\n${expectedOutput}` }] }],
-        generationConfig: { response_mime_type: "application/json" }
-=======
-        model: "google/gemini-3-flash-preview",
+        model: MODEL,
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt }
+          { role: "user", content: userPrompt },
         ],
         tools: [
           {
             type: "function",
             function: {
-              name: "generate_questions",
-              description: "Generate quiz questions in Arabic for Algerian curriculum",
+              name: "generate_payload",
+              description: "Generate Arabic educational payload for questions, lessons list, or summary",
               parameters: {
                 type: "object",
                 properties: {
@@ -115,57 +221,113 @@ ${extraInstructions}`;
                     items: {
                       type: "object",
                       properties: {
-                        question_text: { type: "string", description: "نص السؤال بالعربية" },
-                        options: { type: "array", items: { type: "string" }, description: "4 خيارات (اختيار متعدد) أو عناصر العمود الأيسر (ربط)" },
-                        correct_answer: { type: "string", description: "الإجابة الصحيحة أو JSON للأزواج (ربط)" },
-                        time_limit: { type: "number", description: "المؤقت بالثواني (15-60)" },
-                        matching_pairs: { type: "array", items: { type: "string" }, description: "عناصر العمود الأيمن (فقط لأسئلة الربط)" }
+                        question_text: { type: "string" },
+                        options: { type: "array", items: { type: "string" } },
+                        correct_answer: { type: "string" },
+                        time_limit: { type: "number" },
+                        matching_pairs: { type: "array", items: { type: "string" } },
                       },
                       required: ["question_text", "correct_answer", "time_limit"],
-                      additionalProperties: false
-                    }
-                  }
+                      additionalProperties: false,
+                    },
+                  },
+                  lessons: {
+                    type: "array",
+                    items: { type: "string" },
+                  },
+                  summary: { type: "string" },
                 },
-                required: ["questions"],
-                additionalProperties: false
-              }
-            }
-          }
+                additionalProperties: false,
+              },
+            },
+          },
         ],
-        tool_choice: { type: "function", function: { name: "generate_questions" } }
->>>>>>> 57102494f92267d7a5cb68389e0ab2d8a1b990fc
+        tool_choice: { type: "function", function: { name: "generate_payload" } },
       }),
     });
 
     if (!response.ok) {
       if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "تم تجاوز حد الطلبات، حاول لاحقاً" }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        return new Response(JSON.stringify({ error: "طھظ… طھط¬ط§ظˆط² ط­ط¯ ط§ظ„ط·ظ„ط¨ط§طھطŒ ط­ط§ظˆظ„ ظ„ط§ط­ظ‚ط§" }), {
+          status: 429,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+
       if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "يرجى إضافة رصيد للمحفظة" }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        return new Response(JSON.stringify({ error: "ظٹط±ط¬ظ‰ ط¥ط¶ط§ظپط© ط±طµظٹط¯ ظ„ظ„ظ…ط­ظپط¸ط©" }), {
+          status: 402,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      const t = await response.text();
-      console.error("AI error:", response.status, t);
+
+      const responseText = await response.text();
+      console.error("generate-questions AI error:", response.status, responseText);
       throw new Error("AI gateway error");
     }
 
-    const data = await response.json();
-    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall) throw new Error("No tool call in response");
-    
-    const result = JSON.parse(toolCall.function.arguments);
+    const aiData = await response.json();
+    const payload = extractPayload(aiData);
 
-    return new Response(JSON.stringify(result), {
+    if (requestedType === "lessons_list") {
+      const lessons = asStringArray(payload.lessons).slice(0, 10);
+
+      if (!lessons.length) throw new Error("No lessons generated");
+
+      return new Response(JSON.stringify({ lessons }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (requestedType === "lesson_summary") {
+      const summary = typeof payload.summary === "string" ? payload.summary.trim() : "";
+
+      if (!summary) throw new Error("No summary generated");
+
+      return new Response(JSON.stringify({ summary }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const rawQuestions = Array.isArray(payload.questions) ? payload.questions : [];
+
+    const questions = rawQuestions
+      .map((question) => {
+        const questionText = typeof question.question_text === "string" ? question.question_text.trim() : "";
+        const correctAnswer = toCorrectAnswer(question.correct_answer);
+        const options = asStringArray(question.options);
+        const matchingPairs = asStringArray(question.matching_pairs);
+        const timeLimit = clamp(Math.round(Number(question.time_limit) || 30), 15, 120);
+
+        if (!questionText || !correctAnswer) return null;
+
+        if (requestedType === "multiple_choice" && options.length < 2) return null;
+        if (requestedType === "matching" && (options.length < 2 || matchingPairs.length < 2)) return null;
+
+        return {
+          question_text: questionText,
+          options: options.length ? options : undefined,
+          correct_answer: correctAnswer,
+          time_limit: timeLimit,
+          matching_pairs: matchingPairs.length ? matchingPairs : undefined,
+        };
+      })
+      .filter((question): question is NonNullable<typeof question> => question !== null)
+      .slice(0, questionCount);
+
+    if (!questions.length) throw new Error("No questions generated");
+
+    return new Response(JSON.stringify({ questions }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-  } catch (e) {
-    console.error("generate-questions error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+  } catch (error) {
+    console.error("generate-questions error:", error);
+    return new Response(
+      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    );
   }
 });
