@@ -30,19 +30,47 @@ const Pending = () => {
     }
     setChecking(true);
     try {
-      const { data, error } = await supabase.rpc('activate_account_by_code', {
-        code_text: code.trim()
-      });
+      // Check activation_codes table for universal codes
+      const { data: codeData, error: codeError } = await supabase
+        .from("activation_codes")
+        .select("*")
+        .eq("code", code.trim())
+        .eq("is_used", false)
+        .single();
 
-      const res = data as { success: boolean, message: string } | null;
-
-      if (error || !res || !res.success) {
-        toast.error(res?.message || error?.message || "كود التفعيل غير صحيح أو مستخدم مسبقاً");
+      if (codeError || !codeData) {
+        // Fallback: check profile's own activation_code
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("id, activation_code")
+          .eq("user_id", user.id)
+          .single();
+        
+        if (profile?.activation_code === code.trim()) {
+          await supabase.from("profiles").update({ is_activated: true }).eq("id", profile.id);
+          toast.success("تم تفعيل حسابك بنجاح! 🎉");
+          setTimeout(() => window.location.reload(), 1000);
+        } else {
+          toast.error("كود التفعيل غير صحيح أو مستخدم مسبقاً");
+        }
         setChecking(false);
         return;
       }
 
-      toast.success("تم تفعيل حسابك بنجاح! 🎉");
+      // Mark code as used
+      await supabase.from("activation_codes").update({
+        is_used: true,
+        used_by: user.id,
+        used_at: new Date().toISOString(),
+      }).eq("id", codeData.id);
+
+      // Activate profile with the version from the code
+      await supabase.from("profiles").update({
+        is_activated: true,
+        version: codeData.version,
+      }).eq("user_id", user.id);
+
+      toast.success(`تم تفعيل حسابك بنسخة ${codeData.version.toUpperCase()}! 🎉`);
       setTimeout(() => window.location.reload(), 1000);
     } catch {
       toast.error("حدث خطأ في التحقق");

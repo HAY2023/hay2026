@@ -1,16 +1,15 @@
-import { useState, useEffect } from "react";
+import { useState, useRef } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import StarsBackground from "@/components/StarsBackground";
 import { toast } from "sonner";
 import {
-  ArrowRight, Sparkles, Loader2, GraduationCap, Volume2, VolumeX,
-  CheckCircle, XCircle, BookOpen, Send, Brain
+  ArrowRight, Sparkles, Loader2, GraduationCap,
+  CheckCircle, XCircle, BookOpen, Send, Brain, Printer, RotateCcw
 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 
 interface ExamQuestion {
   question_text: string;
@@ -28,60 +27,35 @@ const ProExam = () => {
   const [count, setCount] = useState(10);
   const [generating, setGenerating] = useState(false);
   const [questions, setQuestions] = useState<ExamQuestion[]>([]);
-  const [current, setCurrent] = useState(0);
   const [answers, setAnswers] = useState<Record<number, string>>({});
-  const [textAnswer, setTextAnswer] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [corrections, setCorrections] = useState<Record<number, string>>({});
   const [correcting, setCorrecting] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
   const [examStarted, setExamStarted] = useState(false);
+  const examRef = useRef<HTMLDivElement>(null);
 
   if (loading) return null;
   if (!user) return <Navigate to="/auth" replace />;
   if (!isActivated) return <Navigate to="/pending" replace />;
-
+  
   const isPro = profile?.version === "pro";
   if (!isPro) return <Navigate to="/" replace />;
-
-  const speakQuestion = (text: string) => {
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      u.lang = 'ar'; u.rate = 0.9;
-      u.onstart = () => setIsSpeaking(true);
-      u.onend = () => setIsSpeaking(false);
-      u.onerror = () => setIsSpeaking(false);
-      window.speechSynthesis.speak(u);
-    }
-  };
 
   const generateExam = async () => {
     if (!topic.trim()) { toast.error("اكتب الموضوع"); return; }
     setGenerating(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error("No session found");
-
       const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-questions`;
       const resp = await fetch(url, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`
-        },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
         body: JSON.stringify({ topic, count, type: "multiple_choice", level, aiMode: "algerian" }),
       });
-      if (!resp.ok) {
-        const err = await resp.json();
-        toast.error(err.error || "خطأ في توليد الأسئلة");
-        return;
-      }
+      if (!resp.ok) { const err = await resp.json(); toast.error(err.error || "خطأ"); return; }
       const data = await resp.json();
       if (!data.questions?.length) { toast.error("لم يتم توليد أسئلة"); return; }
       setQuestions(data.questions);
       setExamStarted(true);
-      setCurrent(0);
       setAnswers({});
       setCorrections({});
       setSubmitted(false);
@@ -95,25 +69,20 @@ const ProExam = () => {
   };
 
   const submitExam = async () => {
-    if (Object.keys(answers).length < questions.length) {
-      toast.error("أجب على جميع الأسئلة أولاً");
+    const unanswered = questions.length - Object.keys(answers).length;
+    if (unanswered > 0) {
+      toast.error(`بقي ${unanswered} سؤال بدون إجابة`);
       return;
     }
     setSubmitted(true);
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
     setCorrecting(true);
 
-    // Correct each answer with AI teacher
     const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-teacher-correct`;
     for (let i = 0; i < questions.length; i++) {
       try {
         const resp = await fetch(url, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`
-          },
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
           body: JSON.stringify({
             question: questions[i].question_text,
             userAnswer: answers[i],
@@ -125,9 +94,7 @@ const ProExam = () => {
           const data = await resp.json();
           setCorrections(prev => ({ ...prev, [i]: data.correction }));
         }
-      } catch (err) {
-        console.error("Correction error step", i, err);
-      }
+      } catch { /* skip */ }
     }
     setCorrecting(false);
   };
@@ -135,6 +102,20 @@ const ProExam = () => {
   const score = submitted
     ? questions.filter((q, i) => answers[i]?.trim().toLowerCase() === q.correct_answer.trim().toLowerCase()).length
     : 0;
+
+  const isCorrect = (i: number) => answers[i]?.trim().toLowerCase() === questions[i].correct_answer.trim().toLowerCase();
+
+  const printExam = () => {
+    window.print();
+  };
+
+  const newExam = () => {
+    setExamStarted(false);
+    setQuestions([]);
+    setAnswers({});
+    setCorrections({});
+    setSubmitted(false);
+  };
 
   // Setup screen
   if (!examStarted) {
@@ -161,7 +142,7 @@ const ProExam = () => {
                 <Brain className="w-12 h-12 text-purple-400 mx-auto mb-3" />
               </motion.div>
               <h2 className="font-heading text-xl gold-text mb-1">نموذج اختبار بالذكاء الاصطناعي</h2>
-              <p className="text-sm text-muted-foreground">حسب المنهج الدراسي الجزائري مع تصحيح كالأستاذ</p>
+              <p className="text-sm text-muted-foreground">ورقة اختبار كاملة حسب المنهج الجزائري</p>
             </div>
 
             <div className="space-y-3">
@@ -183,22 +164,22 @@ const ProExam = () => {
                 <div>
                   <label className="text-xs text-muted-foreground block mb-1">عدد الأسئلة</label>
                   <Input type="number" value={count} onChange={e => setCount(parseInt(e.target.value) || 10)}
-                    min={5} max={30} className="bg-secondary/50 rounded-xl" />
+                    min={3} max={30} className="bg-secondary/50 rounded-xl" />
                 </div>
               </div>
 
               <div className="glass-card p-3 text-right text-xs text-muted-foreground space-y-1">
+                <p>📄 ورقة اختبار كاملة - جميع الأسئلة في صفحة واحدة</p>
                 <p>🇩🇿 أسئلة حسب المنهج الجزائري الرسمي</p>
                 <p>🤖 تصحيح تلقائي ذكي كالأستاذ</p>
-                <p>📊 تحليل مفصل لكل إجابة</p>
-                <p>🔊 قراءة صوتية للأسئلة</p>
+                <p>🖨️ إمكانية طباعة الاختبار</p>
               </div>
 
               <motion.div whileTap={{ scale: 0.97 }}>
                 <Button onClick={generateExam} disabled={generating}
                   className="w-full bg-purple-600 hover:bg-purple-700 text-white gap-2 text-lg py-6 rounded-xl shadow-lg shadow-purple-500/20">
                   {generating ? <><Loader2 className="w-5 h-5 animate-spin" /> جاري توليد الاختبار...</>
-                    : <><Sparkles className="w-5 h-5" /> ابدأ الاختبار</>}
+                    : <><Sparkles className="w-5 h-5" /> توليد ورقة الاختبار</>}
                 </Button>
               </motion.div>
             </div>
@@ -208,137 +189,204 @@ const ProExam = () => {
     );
   }
 
-  // Exam view
-  const q = questions[current];
-  const isCorrect = (i: number) => answers[i]?.trim().toLowerCase() === questions[i].correct_answer.trim().toLowerCase();
-
+  // Full paper exam view - ALL questions on one page
   return (
     <div className="min-h-screen relative">
       <StarsBackground />
-      <div className="relative z-10 max-w-2xl mx-auto p-4 md:p-6">
-        {/* Header */}
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center justify-between mb-4">
+      <div className="relative z-10 max-w-3xl mx-auto p-4 md:p-6 print:max-w-none print:p-8">
+        
+        {/* Sticky top bar */}
+        <div className="sticky top-0 z-20 bg-background/80 backdrop-blur-xl border-b border-border/30 -mx-4 px-4 py-3 mb-6 flex items-center justify-between print:hidden">
           <div className="flex items-center gap-2">
-            <GraduationCap className="w-5 h-5 text-purple-400" />
-            <span className="font-heading text-sm gold-text">اختبار: {topic}</span>
+            <Button variant="ghost" size="sm" onClick={() => navigate("/")} className="gap-1 rounded-xl">
+              <ArrowRight className="w-4 h-4" /> العودة
+            </Button>
+            <Button variant="outline" size="sm" onClick={printExam} className="gap-1 rounded-xl">
+              <Printer className="w-4 h-4" /> طباعة
+            </Button>
+            <Button variant="outline" size="sm" onClick={newExam} className="gap-1 rounded-xl">
+              <RotateCcw className="w-4 h-4" /> اختبار جديد
+            </Button>
           </div>
-          {submitted && (
-            <span className={`font-heading text-lg font-bold ${score / questions.length >= 0.5 ? "text-green-400" : "text-destructive"}`}>
-              {score}/{questions.length}
-            </span>
-          )}
-        </motion.div>
-
-        {/* Question navigation dots */}
-        <div className="flex gap-1 justify-center mb-4 flex-wrap">
-          {questions.map((_, i) => (
-            <button key={i} onClick={() => setCurrent(i)}
-              className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${current === i ? "bg-purple-500 text-white scale-110" :
-                submitted ? (isCorrect(i) ? "bg-green-500/20 text-green-400" : "bg-destructive/20 text-destructive") :
-                  answers[i] ? "bg-primary/20 text-primary" : "bg-secondary/50 text-muted-foreground"
-                }`}>
-              {i + 1}
-            </button>
-          ))}
+          <div className="flex items-center gap-3">
+            {submitted && (
+              <span className={`font-heading text-lg font-bold ${score / questions.length >= 0.5 ? "text-green-400" : "text-destructive"}`}>
+                {score}/{questions.length}
+              </span>
+            )}
+            {!submitted && (
+              <span className="text-xs text-muted-foreground">
+                {Object.keys(answers).length}/{questions.length} إجابة
+              </span>
+            )}
+          </div>
         </div>
 
-        {/* Question card */}
-        <AnimatePresence mode="wait">
-          <motion.div key={current} initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }}
-            className="glass-card p-6 mb-4">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs text-muted-foreground">السؤال {current + 1} من {questions.length}</span>
-              <button onClick={() => isSpeaking ? (window.speechSynthesis.cancel(), setIsSpeaking(false)) : speakQuestion(q.question_text)}
-                className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1 transition-colors">
-                {isSpeaking ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-                <span>{isSpeaking ? "إيقاف" : "اقرأ"}</span>
-              </button>
+        {/* Exam Paper Header */}
+        <div ref={examRef} className="exam-paper">
+          <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
+            className="border-2 border-foreground/20 rounded-2xl p-6 mb-6 text-center print:border-black print:rounded-none">
+            <div className="flex items-center justify-between mb-4 text-xs text-muted-foreground print:text-black">
+              <span>المدة: {questions.length * 3} دقائق</span>
+              <span>🇩🇿 الجمهورية الجزائرية الديمقراطية الشعبية</span>
             </div>
-            <h2 className="text-lg md:text-xl font-heading font-bold text-foreground text-right leading-relaxed">
-              {q.question_text}
-            </h2>
-
-            {submitted && (
-              <div className={`mt-3 flex items-center gap-2 ${isCorrect(current) ? "text-green-400" : "text-destructive"}`}>
-                {isCorrect(current) ? <CheckCircle className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
-                <span className="text-sm font-body">{isCorrect(current) ? "إجابة صحيحة!" : `الإجابة الصحيحة: ${q.correct_answer}`}</span>
-              </div>
-            )}
+            <h1 className="text-2xl md:text-3xl font-heading font-bold text-foreground mb-2 print:text-black">
+              اختبار في مادة {topic}
+            </h1>
+            <div className="flex items-center justify-center gap-4 text-sm text-muted-foreground print:text-black">
+              <span>المستوى: {level}</span>
+              <span>•</span>
+              <span>عدد الأسئلة: {questions.length}</span>
+            </div>
+            <div className="mt-3 border-t border-border/30 pt-3 print:border-black">
+              <p className="text-xs text-muted-foreground print:text-black">
+                الاسم واللقب: ............................ القسم: .............. التاريخ: {new Date().toLocaleDateString("ar-DZ")}
+              </p>
+            </div>
           </motion.div>
-        </AnimatePresence>
 
-        {/* Options */}
-        {q.options && q.options.length > 0 ? (
-          <div className="grid grid-cols-1 gap-2 mb-4">
-            {q.options.map((opt, oi) => (
-              <motion.button key={oi} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 * oi }}
-                onClick={() => selectAnswer(current, opt)} disabled={submitted}
-                className={`glass-card p-4 text-right font-body transition-all rounded-xl
-                  ${!submitted && answers[current] === opt ? "border-purple-500 bg-purple-500/10" : ""}
-                  ${!submitted && answers[current] !== opt ? "hover:border-primary/30" : ""}
-                  ${submitted && opt.toLowerCase() === q.correct_answer.toLowerCase() ? "border-green-500 bg-green-500/10" : ""}
-                  ${submitted && answers[current] === opt && opt.toLowerCase() !== q.correct_answer.toLowerCase() ? "border-destructive bg-destructive/10" : ""}
-                `}>
-                <span className="text-xs text-muted-foreground ml-2">{["أ", "ب", "ج", "د"][oi]})</span>
-                {opt}
-              </motion.button>
+          {/* ALL Questions - Full Paper */}
+          <div className="space-y-6">
+            {questions.map((q, qIndex) => (
+              <motion.div key={qIndex}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: qIndex * 0.05 }}
+                className={`border rounded-xl p-5 transition-all print:border-black print:rounded-none print:break-inside-avoid ${
+                  submitted
+                    ? isCorrect(qIndex)
+                      ? "border-green-500/40 bg-green-500/5"
+                      : "border-destructive/40 bg-destructive/5"
+                    : answers[qIndex]
+                      ? "border-purple-500/40 bg-purple-500/5"
+                      : "border-border/30"
+                }`}>
+                
+                {/* Question header */}
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="flex items-center gap-2">
+                    {submitted && (
+                      isCorrect(qIndex)
+                        ? <CheckCircle className="w-5 h-5 text-green-400 shrink-0 print:hidden" />
+                        : <XCircle className="w-5 h-5 text-destructive shrink-0 print:hidden" />
+                    )}
+                  </div>
+                  <div className="flex-1 text-right">
+                    <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-purple-500/10 text-purple-400 font-heading font-bold text-sm mb-2 print:bg-transparent print:border print:border-black print:text-black">
+                      {qIndex + 1}
+                    </span>
+                    <h3 className="text-base md:text-lg font-heading font-bold text-foreground leading-relaxed print:text-black">
+                      {q.question_text}
+                    </h3>
+                  </div>
+                </div>
+
+                {/* Options */}
+                {q.options && q.options.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mr-4 print:grid-cols-2">
+                    {q.options.map((opt, oi) => {
+                      const letter = ["أ", "ب", "ج", "د"][oi];
+                      const isSelected = answers[qIndex] === opt;
+                      const isCorrectOption = opt.toLowerCase() === q.correct_answer.toLowerCase();
+                      
+                      return (
+                        <button key={oi}
+                          onClick={() => selectAnswer(qIndex, opt)}
+                          disabled={submitted}
+                          className={`p-3 rounded-lg text-right text-sm font-body transition-all border print:border-black print:rounded-none ${
+                            !submitted && isSelected
+                              ? "border-purple-500 bg-purple-500/10 ring-1 ring-purple-500/30"
+                              : !submitted
+                                ? "border-border/30 hover:border-primary/40 hover:bg-secondary/30"
+                                : isCorrectOption
+                                  ? "border-green-500 bg-green-500/10"
+                                  : isSelected && !isCorrectOption
+                                    ? "border-destructive bg-destructive/10"
+                                    : "border-border/20 opacity-60"
+                          }`}>
+                          <span className="text-xs text-muted-foreground ml-2 font-bold print:text-black">{letter})</span>
+                          <span className="print:text-black">{opt}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="mr-4">
+                    <Input
+                      value={answers[qIndex] || ""}
+                      onChange={e => setAnswers(prev => ({ ...prev, [qIndex]: e.target.value }))}
+                      placeholder="اكتب إجابتك هنا..."
+                      className="bg-secondary/30 text-right rounded-xl print:border-black"
+                      disabled={submitted}
+                    />
+                  </div>
+                )}
+
+                {/* Show correct answer after submission */}
+                {submitted && !isCorrect(qIndex) && (
+                  <div className="mt-3 mr-4 text-sm text-green-400 font-body text-right print:text-black">
+                    ✅ الإجابة الصحيحة: {q.correct_answer}
+                  </div>
+                )}
+
+                {/* AI Teacher correction */}
+                {submitted && corrections[qIndex] && (
+                  <div className="mt-3 mr-4 p-3 rounded-lg bg-purple-500/5 border border-purple-500/20 print:border-black print:bg-transparent">
+                    <div className="flex items-center gap-2 mb-1 justify-end">
+                      <span className="text-xs font-heading text-purple-400 print:text-black">تصحيح الأستاذ AI</span>
+                      <GraduationCap className="w-3 h-3 text-purple-400 print:hidden" />
+                    </div>
+                    <p className="text-xs text-muted-foreground font-body leading-relaxed whitespace-pre-wrap text-right print:text-black">
+                      {corrections[qIndex]}
+                    </p>
+                  </div>
+                )}
+
+                {submitted && correcting && !corrections[qIndex] && (
+                  <div className="mt-3 mr-4 flex items-center justify-end gap-2 text-purple-400 print:hidden">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    <span className="text-xs">جاري التصحيح...</span>
+                  </div>
+                )}
+              </motion.div>
             ))}
           </div>
-        ) : (
-          <div className="flex gap-2 mb-4">
-            <Input value={answers[current] || textAnswer} onChange={e => { setTextAnswer(e.target.value); setAnswers(prev => ({ ...prev, [current]: e.target.value })); }}
-              placeholder="اكتب إجابتك..." className="bg-secondary/50 text-right rounded-xl flex-1" disabled={submitted} />
+
+          {/* Submit / Score section */}
+          <div className="mt-8 print:hidden">
+            {!submitted ? (
+              <motion.div whileTap={{ scale: 0.97 }}>
+                <Button onClick={submitExam}
+                  className="w-full bg-purple-600 hover:bg-purple-700 text-white gap-2 text-lg py-6 rounded-xl shadow-lg shadow-purple-500/20">
+                  <Send className="w-5 h-5" /> تسليم ورقة الاختبار ({Object.keys(answers).length}/{questions.length})
+                </Button>
+              </motion.div>
+            ) : (
+              <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}
+                className="glass-card p-6 text-center space-y-4">
+                <div className={`text-5xl font-heading font-bold ${score / questions.length >= 0.5 ? "text-green-400" : "text-destructive"}`}>
+                  {score}/{questions.length}
+                </div>
+                <p className="text-lg font-heading text-foreground">
+                  {score / questions.length >= 0.8 ? "ممتاز! 🌟" :
+                   score / questions.length >= 0.5 ? "جيد، واصل التحسن 👍" :
+                   "تحتاج مراجعة أكثر 📖"}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  النسبة: {Math.round((score / questions.length) * 100)}%
+                  {correcting && " • جاري تصحيح الأستاذ AI..."}
+                </p>
+                <div className="flex gap-3 justify-center">
+                  <Button onClick={printExam} variant="outline" className="gap-2 rounded-xl">
+                    <Printer className="w-4 h-4" /> طباعة النتائج
+                  </Button>
+                  <Button onClick={newExam} className="gold-gradient text-background gap-2 rounded-xl">
+                    <BookOpen className="w-4 h-4" /> اختبار جديد
+                  </Button>
+                </div>
+              </motion.div>
+            )}
           </div>
-        )}
-
-        {/* AI Teacher correction */}
-        {submitted && corrections[current] && (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-            className="glass-card p-4 mb-4 border-purple-500/30">
-            <div className="flex items-center gap-2 mb-2 justify-end">
-              <span className="text-sm font-heading text-purple-400">تصحيح الأستاذ AI</span>
-              <GraduationCap className="w-4 h-4 text-purple-400" />
-            </div>
-            <p className="text-sm text-muted-foreground font-body leading-relaxed whitespace-pre-wrap text-right">
-              {corrections[current]}
-            </p>
-          </motion.div>
-        )}
-
-        {submitted && correcting && !corrections[current] && (
-          <div className="flex items-center justify-center gap-2 text-purple-400 mb-4">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            <span className="text-sm">جاري تصحيح الأستاذ...</span>
-          </div>
-        )}
-
-        {/* Navigation */}
-        <div className="flex gap-3 justify-between">
-          <Button variant="outline" onClick={() => setCurrent(p => Math.max(0, p - 1))} disabled={current === 0} className="rounded-xl">
-            السابق
-          </Button>
-
-          {!submitted && current === questions.length - 1 && Object.keys(answers).length === questions.length && (
-            <motion.div whileTap={{ scale: 0.95 }}>
-              <Button onClick={submitExam} className="bg-purple-600 hover:bg-purple-700 text-white gap-2 rounded-xl shadow-lg">
-                <Send className="w-4 h-4" /> تسليم الاختبار
-              </Button>
-            </motion.div>
-          )}
-
-          {submitted && current === questions.length - 1 && (
-            <motion.div whileTap={{ scale: 0.95 }}>
-              <Button onClick={() => { setExamStarted(false); setQuestions([]); setAnswers({}); setCorrections({}); setSubmitted(false); }}
-                className="gold-gradient text-background gap-2 rounded-xl">
-                <BookOpen className="w-4 h-4" /> اختبار جديد
-              </Button>
-            </motion.div>
-          )}
-
-          <Button variant="outline" onClick={() => setCurrent(p => Math.min(questions.length - 1, p + 1))}
-            disabled={current === questions.length - 1} className="rounded-xl">
-            التالي
-          </Button>
         </div>
       </div>
     </div>
