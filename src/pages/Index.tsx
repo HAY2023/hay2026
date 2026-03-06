@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import StarsBackground from "@/components/StarsBackground";
-import { Brain, LogOut, Settings, Sparkles, Trophy, PenTool, Zap, Heart, GraduationCap, HelpCircle, User } from "lucide-react";
+import { Brain, LogOut, Settings, Sparkles, Trophy, PenTool, Zap, Heart, GraduationCap, HelpCircle, User, BookOpen } from "lucide-react";
 import { motion } from "framer-motion";
 import NotificationBell from "@/components/NotificationBell";
 
@@ -171,10 +171,16 @@ const Index = () => {
                     <GraduationCap className="w-5 h-5" /> اختبار PRO - AI أستاذ
                   </Button>
                 </motion.div>
-                <motion.div whileTap={{ scale: 0.97 }} className="col-span-2">
+                <motion.div whileTap={{ scale: 0.97 }}>
                   <Button onClick={() => navigate("/curriculum")} variant="outline"
                     className="gap-2 h-12 text-base font-heading w-full rounded-xl border-primary/30">
                     <Sparkles className="w-4 h-4 text-primary" /> 🇩🇿 المنهج الدراسي الجزائري
+                  </Button>
+                </motion.div>
+                <motion.div whileTap={{ scale: 0.97 }}>
+                  <Button onClick={() => navigate("/library")} variant="outline"
+                    className="gap-2 h-12 text-base font-heading w-full rounded-xl border-primary/30">
+                    <BookOpen className="w-4 h-4 text-primary" /> 📚 مكتبة الكتب والملخصات
                   </Button>
                 </motion.div>
               </>
