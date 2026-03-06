@@ -50,21 +50,34 @@ serve(async (req) => {
       "ابتدائي": "مستوى ابتدائي (سن 6-11)",
       "متوسط": "مستوى متوسط (سن 11-15)",
       "ثانوي": "مستوى ثانوي وبكالوريا (سن 15-18)",
-      "جامعي": "مستوى جامع",
+      "جامعي": "مستوى جامعي",
     };
 
     const isAlgerian = aiMode === "algerian";
     const systemPrompt = isAlgerian
-      ? "أنت أستاذ جزائري خبير في المنهج الدراسي الرسمي. قم بتوليد أسئلة مطابقة لنمط امتحانات dzexams.com."
-      : "أنت محرك أسئلة تعليمي متقدم باللغة العربية. قم بتوليد أسئلة دقيقة وشاملة.";
+      ? "أنت أستاذ جزائري خبير في المنهج الدراسي الرسمي. اجعل إجاباتك دقيقة وحسب البرنامج الجزائري."
+      : "أنت محرك أسئلة ومساعد تعليمي متقدم باللغة العربية. اجعل إجاباتك دقيقة وشاملة.";
 
-    const userPrompt = `موضوع الأسئلة: ${topic}
+    let userPrompt = "";
+    let expectedOutput = "";
+
+    if (type === 'lessons_list') {
+      userPrompt = `أعطني قائمة بأهم الدروس المقررة في مادة "${topic}" لـ ${levelMap[level] || level}.
+المطلوب: قائمة بأسماء الدروس فقط (بين 5 إلى 10 دروس أساسية).`;
+      expectedOutput = `{"lessons": ["اسم الدرس الأول", "اسم الدرس الثاني"]}`;
+    } else if (type === 'lesson_summary') {
+      userPrompt = `قم بإعداد ملخص شامل وذكي لدرس "${topic}" لـ ${levelMap[level] || level}.
+المطلوب: ملخص مقسم إلى نقاط واضحة، سهلة الفهم، تغطي جميع الأفكار الأساسية للدرس.`;
+      expectedOutput = `{"summary": "النص الكامل للملخص هنا..."}`;
+    } else {
+      userPrompt = `موضوع الأسئلة: ${topic}
 المستوى: ${levelMap[level] || level}
 العدد المطلوب: ${count || 10}
 نوع الأسئلة: ${type === 'text' ? 'كتابية' : 'اختيار من متعدد'}
 
-ملاحظة هامة: يجب أن تكون الأسئلة باللغة العربية الفصحى (مع لمسة جزائرية إذا كان النمط جزائري).
-أجب فقط بصيغة JSON تحتوي على مصفوفة باسم questions.`;
+ملاحظة هامة: يجب أن تكون الأسئلة باللغة العربية الفصحى.`;
+      expectedOutput = `{"questions": [{"question_text": "...", "options": ["...", "..."], "correct_answer": "...", "time_limit": 30}]}`;
+    }
 
     // 3. Direct Gemini Call
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
@@ -73,7 +86,7 @@ serve(async (req) => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: `${systemPrompt}\n\n${userPrompt}\n\nيجب أن يكون الرد JSON فقط بهذا الهيكل: {"questions": [{"question_text": "...", "options": ["...", "..."], "correct_answer": "...", "time_limit": 30}]}` }] }],
+        contents: [{ parts: [{ text: `${systemPrompt}\n\n${userPrompt}\n\nيجب أن يكون الرد JSON فقط بهذا الهيكل:\n${expectedOutput}` }] }],
         generationConfig: { response_mime_type: "application/json" }
       }),
     });

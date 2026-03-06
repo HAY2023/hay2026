@@ -77,9 +77,9 @@ SECURITY DEFINER
 SET search_path = public, auth
 AS $$
 BEGIN
-    -- Check if shooter is admin
-    IF NOT public.has_role(auth.uid(), 'admin') THEN
-        RAISE EXCEPTION 'Only admins can delete users';
+    -- Check if shooter is admin or the user themselves
+    IF NOT public.has_role(auth.uid(), 'admin') AND auth.uid() != target_user_id THEN
+        RAISE EXCEPTION 'You do not have permission to delete this account.';
     END IF;
 
     -- Delete from auth.users (cascades to profiles and other tables)

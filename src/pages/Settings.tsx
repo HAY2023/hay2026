@@ -99,16 +99,15 @@ const Settings = () => {
     if (deleteText !== "حذف حسابي") { toast.error('اكتب "حذف حسابي" للتأكيد'); return; }
     setDeleting(true);
     try {
-      await supabase.from("game_results").delete().eq("user_id", user.id);
-      await supabase.from("questions").delete().eq("created_by", user.id);
-      await supabase.from("categories").delete().eq("created_by", user.id);
-      await supabase.from("notifications").delete().eq("user_id", user.id);
-      await supabase.from("profiles").delete().eq("user_id", user.id);
+      const { error } = await supabase.rpc("delete_user_permanently", { target_user_id: user.id });
+      if (error) throw error;
+
       await signOut();
-      toast.success("تم حذف بيانات حسابك");
+      toast.success("تم حذف بيانات حسابك نهائياً");
       navigate("/auth");
-    } catch {
-      toast.error("خطأ في حذف الحساب");
+    } catch (err: any) {
+      console.error(err);
+      toast.error("خطأ في الحذف: " + (err.message || "حاول مرة أخرى"));
     }
     setDeleting(false);
   };
@@ -147,12 +146,14 @@ const Settings = () => {
               <span className="text-foreground text-xs" dir="ltr">{user.email}</span>
               <span className="text-muted-foreground">البريد</span>
             </div>
-            {daysLeft !== null && (
+            {expiresAt && (
               <div className="flex justify-between items-center">
-                <span className={`flex items-center gap-1 text-xs ${daysLeft <= 7 ? "text-destructive" : "text-foreground"}`}>
-                  <Clock className="w-3 h-3" /> {daysLeft > 0 ? `${daysLeft} يوم متبقي` : "منتهي ⚠️"}
+                <span className={`flex items-center gap-1 text-xs ${daysLeft !== null && daysLeft <= 7 ? "text-destructive" : "text-foreground"}`}>
+                  <Clock className="w-3 h-3" />
+                  <span dir="ltr">إلى: {new Date(expiresAt).toLocaleDateString('en-GB')}</span>
+                  {daysLeft !== null && daysLeft > 0 ? ` (${daysLeft} يوم)` : " (منتهي)"}
                 </span>
-                <span className="text-muted-foreground">مدة التفعيل</span>
+                <span className="text-muted-foreground">صلاحية التفعيل</span>
               </div>
             )}
             {!expiresAt && (
@@ -247,29 +248,29 @@ const Settings = () => {
           </h3>
 
           <AnimatePresence>
-          {!showDeleteConfirm ? (
-            <Button onClick={() => setShowDeleteConfirm(true)} variant="outline" className="gap-1 rounded-xl w-full border-destructive/30 text-destructive hover:bg-destructive/10">
-              <Trash2 className="w-4 h-4" /> حذف الحساب نهائياً
-            </Button>
-          ) : (
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="space-y-3">
-              <div className="bg-destructive/5 p-3 rounded-xl border border-destructive/20 text-right">
-                <p className="text-xs text-destructive font-bold mb-1">⚠️ تحذير نهائي</p>
-                <p className="text-xs text-destructive/80">سيتم حذف جميع بياناتك (أقسام، أسئلة، نتائج، إشعارات) نهائياً. هذا الإجراء لا يمكن التراجع عنه.</p>
-              </div>
-              <Input value={deleteText} onChange={e => setDeleteText(e.target.value)}
-                placeholder='اكتب "حذف حسابي" للتأكيد' className="bg-destructive/5 text-right rounded-xl border-destructive/30" />
-              <div className="flex gap-2">
-                <Button onClick={() => { setShowDeleteConfirm(false); setDeleteText(""); }} variant="outline" className="flex-1 rounded-xl">
-                  إلغاء
-                </Button>
-                <Button onClick={deleteAccount} disabled={deleting || deleteText !== "حذف حسابي"}
-                  className="flex-1 bg-destructive hover:bg-destructive/90 text-destructive-foreground gap-1 rounded-xl">
-                  <Trash2 className="w-4 h-4" /> {deleting ? "جاري الحذف..." : "تأكيد الحذف"}
-                </Button>
-              </div>
-            </motion.div>
-          )}
+            {!showDeleteConfirm ? (
+              <Button onClick={() => setShowDeleteConfirm(true)} variant="outline" className="gap-1 rounded-xl w-full border-destructive/30 text-destructive hover:bg-destructive/10">
+                <Trash2 className="w-4 h-4" /> حذف الحساب نهائياً
+              </Button>
+            ) : (
+              <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="space-y-3">
+                <div className="bg-destructive/5 p-3 rounded-xl border border-destructive/20 text-right">
+                  <p className="text-xs text-destructive font-bold mb-1">⚠️ تحذير نهائي</p>
+                  <p className="text-xs text-destructive/80">سيتم حذف جميع بياناتك (أقسام، أسئلة، نتائج، إشعارات) نهائياً. هذا الإجراء لا يمكن التراجع عنه.</p>
+                </div>
+                <Input value={deleteText} onChange={e => setDeleteText(e.target.value)}
+                  placeholder='اكتب "حذف حسابي" للتأكيد' className="bg-destructive/5 text-right rounded-xl border-destructive/30" />
+                <div className="flex gap-2">
+                  <Button onClick={() => { setShowDeleteConfirm(false); setDeleteText(""); }} variant="outline" className="flex-1 rounded-xl">
+                    إلغاء
+                  </Button>
+                  <Button onClick={deleteAccount} disabled={deleting || deleteText !== "حذف حسابي"}
+                    className="flex-1 bg-destructive hover:bg-destructive/90 text-destructive-foreground gap-1 rounded-xl">
+                    <Trash2 className="w-4 h-4" /> {deleting ? "جاري الحذف..." : "تأكيد الحذف"}
+                  </Button>
+                </div>
+              </motion.div>
+            )}
           </AnimatePresence>
         </motion.div>
       </div>
