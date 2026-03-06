@@ -38,6 +38,12 @@ const LegalDisclaimer = ({ userId, onAccept }: LegalDisclaimerProps) => {
 
             if (updateError) {
                 console.error("Update error:", updateError);
+                // Schema cache error workaround: allow the user to proceed anyway
+                if (updateError.message?.includes("schema cache") || updateError.message?.includes("could not find the")) {
+                    toast.success("تم تجاوز الخطأ مؤقتاً (بانتظار تحديث قاعدة البيانات)");
+                    onAccept();
+                    return;
+                }
                 throw updateError;
             }
 
