@@ -41,8 +41,10 @@ const Library = () => {
   const navigate = useNavigate();
   const [selectedStage, setSelectedStage] = useState<string | null>(null);
   const [selectedYear, setSelectedYear] = useState<string | null>(null);
-  const [summaries, setSummaries] = useState<Record<string, string>>({});
-  const [loadingKey, setLoadingKey] = useState<string | null>(null);
+  const [bookLessons, setBookLessons] = useState<Record<string, string[]>>({});
+  const [loadingLessonsKey, setLoadingLessonsKey] = useState<string | null>(null);
+  const [lessonSummaries, setLessonSummaries] = useState<Record<string, string>>({});
+  const [loadingSummaryKey, setLoadingSummaryKey] = useState<string | null>(null);
 
   if (loading) return null;
   if (!user) return <Navigate to="/auth" replace />;
@@ -52,36 +54,67 @@ const Library = () => {
   const stage = curriculum.find(s => s.id === selectedStage);
   const year = stage?.years.find(y => y.id === selectedYear);
 
-  const generateSummary = async (subjectName: string, yearName: string, levelName: string) => {
+  const fetchBookLessons = async (subjectName: string, yearName: string, levelName: string) => {
     const key = `${subjectName}-${yearName}`;
-    if (summaries[key]) return; // already generated
-    
+    if (bookLessons[key]) return; // already generated
+
     if (!isPro) {
-      toast.error("ملخصات AI متاحة فقط في نسخة PRO");
+      toast.error("هذه الميزة متاحة فقط في نسخة PRO");
       return;
     }
 
-    setLoadingKey(key);
+    setLoadingLessonsKey(key);
     try {
-      const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-book-summary`;
-      const resp = await fetch(url, {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("No session");
+
+      const level = levelName === "ابتدائي" ? "ابتدائي" : levelName === "متوسط" ? "متوسط" : "ثانوي";
+      const topic = `${subjectName} - ${yearName}`;
+
+      const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-questions`, {
         method: "POST",
-        headers: { 
-          "Content-Type": "application/json", 
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` 
-        },
-        body: JSON.stringify({ subject: subjectName, year: yearName, level: levelName }),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ topic, level, type: "lessons_list" })
       });
       if (resp.ok) {
         const data = await resp.json();
-        setSummaries(prev => ({ ...prev, [key]: data.summary }));
+        setBookLessons(prev => ({ ...prev, [key]: data.lessons || [] }));
+      } else {
+        toast.error("خطأ في جلب الدروس");
+      }
+    } catch {
+      toast.error("خطأ في الاتصال");
+    }
+    setLoadingLessonsKey(null);
+  };
+
+  const fetchLessonSummary = async (subjectName: string, yearName: string, lessonName: string, levelName: string) => {
+    const key = `${subjectName}-${yearName}-${lessonName}`;
+    if (lessonSummaries[key]) return; // already generated
+
+    setLoadingSummaryKey(key);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("No session");
+
+      const level = levelName === "ابتدائي" ? "ابتدائي" : levelName === "متوسط" ? "متوسط" : "ثانوي";
+      const topic = `${subjectName} - ${lessonName}`;
+
+      const resp = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-questions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ topic, level, type: "lesson_summary" })
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        setLessonSummaries(prev => ({ ...prev, [key]: data.summary }));
       } else {
         toast.error("خطأ في توليد الملخص");
       }
     } catch {
       toast.error("خطأ في الاتصال");
     }
-    setLoadingKey(null);
+    setLoadingSummaryKey(null);
   };
 
   const goBack = () => {
@@ -198,29 +231,29 @@ const Library = () => {
               <div className="space-y-3">
                 {year.subjects.map((subj) => {
                   const key = `${subj.name}-${year.name}`;
-                  const summary = summaries[key];
-                  const isLoading = loadingKey === key;
+                  const lessons = bookLessons[key];
+                  const isLoadingLessons = loadingLessonsKey === key;
 
                   return (
                     <motion.div key={subj.id}
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       className="glass-card p-5 text-right">
-                      <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center justify-between mb-3 flex-wrap-reverse gap-3">
                         <div className="flex items-center gap-2">
                           {isPro && (
                             <Button
                               size="sm"
-                              variant={summary ? "outline" : "default"}
-                              onClick={() => generateSummary(subj.name, year.name, stage.name)}
-                              disabled={isLoading || !!summary}
-                              className={`gap-1 rounded-xl text-xs ${!summary ? "bg-purple-600 hover:bg-purple-700 text-white" : ""}`}>
-                              {isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                              {summary ? "تم التلخيص" : "ملخص AI"}
+                              variant={lessons ? "outline" : "default"}
+                              onClick={() => fetchBookLessons(subj.name, year.name, stage.name)}
+                              disabled={isLoadingLessons || !!lessons}
+                              className={`gap-1 rounded-xl text-xs ${!lessons ? "bg-purple-600 hover:bg-purple-700 text-white" : ""}`}>
+                              {isLoadingLessons ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                              {lessons ? "تم جلب الدروس" : "استعراض الدروس بالذكاء الاصطناعي"}
                             </Button>
                           )}
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 ml-auto">
                           <div>
                             <h3 className="font-heading font-bold text-foreground">كتاب {subj.name}</h3>
                             <p className="text-xs text-muted-foreground">{year.name} - {stage.name}</p>
@@ -229,22 +262,46 @@ const Library = () => {
                         </div>
                       </div>
 
-                      {/* Summary */}
-                      {summary && (
+                      {/* Lessons List */}
+                      {lessons && (
                         <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}
                           className="mt-3 p-4 rounded-xl bg-purple-500/5 border border-purple-500/20">
-                          <div className="flex items-center gap-2 mb-2 justify-end">
-                            <span className="text-xs font-heading text-purple-400">ملخص AI</span>
+                          <div className="flex items-center gap-2 mb-4 justify-end">
+                            <span className="text-xs font-heading text-purple-400">فهرس الدروس المتاح للتلخيص الذكي</span>
                             <FileText className="w-3 h-3 text-purple-400" />
                           </div>
-                          <p className="text-sm text-muted-foreground font-body leading-relaxed whitespace-pre-wrap">
-                            {summary}
-                          </p>
+                          <div className="space-y-2">
+                            {lessons.map((lesson, idx) => {
+                              const lessonKey = `${subj.name}-${year.name}-${lesson}`;
+                              const summary = lessonSummaries[lessonKey];
+                              const isLoadingSummary = loadingSummaryKey === lessonKey;
+                              return (
+                                <div key={idx} className="border border-purple-500/20 rounded-lg p-3 bg-background/50">
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => fetchLessonSummary(subj.name, year.name, lesson, stage.name)}
+                                      disabled={isLoadingSummary || !!summary}
+                                      className="h-8 text-xs border-purple-500/30 text-purple-400 hover:bg-purple-500/10">
+                                      {isLoadingSummary ? <Loader2 className="w-3 h-3 animate-spin" /> : "لخّص هذا الدرس"}
+                                    </Button>
+                                    <h4 className="text-sm font-medium text-foreground text-right flex-1">{lesson}</h4>
+                                  </div>
+                                  {summary && (
+                                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-3 p-3 bg-secondary/30 rounded-lg text-sm leading-relaxed whitespace-pre-wrap text-muted-foreground border-r-2 border-primary text-right">
+                                      {summary}
+                                    </motion.div>
+                                  )}
+                                </div>
+                              )
+                            })}
+                          </div>
                         </motion.div>
                       )}
 
                       {!isPro && (
-                        <p className="text-xs text-muted-foreground mt-2">🔒 ملخصات AI متاحة في نسخة PRO</p>
+                        <p className="text-xs text-muted-foreground mt-2">🔒 ميزات الذكاء الاصطناعي متاحة في نسخة PRO</p>
                       )}
                     </motion.div>
                   );

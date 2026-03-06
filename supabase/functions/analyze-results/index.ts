@@ -10,57 +10,38 @@ serve(async (req) => {
 
   try {
     const { score, total, percentage, categoryName, timeTaken } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    const geminiApiKey = Deno.env.get("GEMINI_API_KEY");
+    if (!geminiApiKey) throw new Error("GEMINI_API_KEY is not configured");
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const systemPrompt = `أنت محلل ومرشد أكاديمي في منصة HAY 2026. مهمتك تقديم تحليل ذكي، مرح، ومفيد لنتائج التلميذ.
+خطواتك:
+1. الجملة الافتتاحية: عبر عن فخرك بنتيجته (سواء كانت ممتازة أو تحتاج تحسين) بعبارة مشوقة.
+2. نقاط القوة: استخرج نقطتي قوة بناءً على نتيجته والوقت المستغرق.
+3. التوجيه العملي: أعطه نصيحتين أو 3 نصائح ذهبية ذكية للتحسين في المرات القادمة (تتعلق بالمادة، أو طريقة الحل، أو إدارة الوقت).
+4. الختام التحفيزي: اختم بعبارة حماسية تدفعه للاستمرار في التعلم مع إيموجي.
+الرد يجب أن يكون منظماً في فقرات قصيرة جداً (لا تزد عن 5-6 أسطر إجمالاً).`;
+
+    const userPrompt = `حلل الأداء التالي:
+- المادة/القسم: ${categoryName || "كوكتيل (مختلط)"}
+- النتيجة: ${score} من ${total} (نسبة ${percentage}%)
+- وقت الحل: ${timeTaken} ثانية`;
+
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
+
+    const response = await fetch(geminiUrl, {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
-        messages: [
-          {
-            role: "system",
-            content: "أنت محلل أداء ذكي لتطبيق اختبارات. قدم تحليلاً مختصراً وممتعاً بالعربية مع إيموجي. كن مشجعاً ومحفزاً."
-          },
-          {
-            role: "user",
-            content: `حلل أداء اللاعب:
-- النتيجة: ${score} من ${total} (${percentage}%)
-- القسم: ${categoryName || "كوكتيل (جميع الأقسام)"}
-- الوقت المستغرق: ${timeTaken} ثانية
-
-قدم:
-1. تقييم عام للأداء (جملة واحدة)
-2. نقاط القوة (2-3 نقاط)
-3. نصائح للتحسين (2-3 نصائح عملية)
-4. تحفيز وتشجيع (جملة واحدة)
-
-اجعل الرد مختصراً وممتعاً.`
-          }
-        ],
+        contents: [{ parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }] }]
       }),
     });
 
     if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "تم تجاوز حد الطلبات" }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "يرجى إضافة رصيد" }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      throw new Error("AI gateway error");
+      throw new Error(`Gemini API error: ${response.statusText}`);
     }
 
     const data = await response.json();
-    const analysis = data.choices?.[0]?.message?.content || "لم يتم التحليل";
+    const analysis = data.candidates?.[0]?.content?.parts?.[0]?.text || "عذراً، لم أتمكن من إعداد التحليل حالياً.";
 
     return new Response(JSON.stringify({ analysis }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

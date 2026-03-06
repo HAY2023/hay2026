@@ -17,6 +17,7 @@ import Settings from "./pages/Settings";
 import Curriculum from "./pages/Curriculum";
 import Library from "./pages/Library";
 import NotFound from "./pages/NotFound";
+import SeoManager from "@/components/SeoManager";
 
 const queryClient = new QueryClient();
 
@@ -27,6 +28,7 @@ const App = () => (
         <Toaster />
         <Sonner />
         <BrowserRouter>
+          <SeoManager />
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />

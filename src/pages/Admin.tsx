@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import StarsBackground from "@/components/StarsBackground";
 import { toast } from "sonner";
+import { deleteUserPermanently as deleteUserPermanentlyRequest } from "@/lib/deleteUserPermanently";
 import { Shield, Users, Crown, Key, Trash2, ShieldAlert, CheckCircle, Search, Mail, Copy, Check, Info, Bell, Trash, Menu, KeySquare, HelpCircle, X, LogOut, Moon, Sun, Monitor, Menu as MenuIcon, Plus, Send, Clock, BookOpen, UserMinus, ArrowRight, KeyRound, MessageCircle, Settings, Loader2, Bot, XCircle, ArrowUpCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -254,8 +255,12 @@ const Admin = () => {
 
   const deleteUserPermanently = async (p: Profile) => {
     if (!confirm(`تحذير خطير: هل أنت متأكد من حذف حساب ${p.display_name} نهائياً؟ لا يمكن التراجع!`)) return;
-    const { error } = await supabase.rpc("delete_user_permanently", { target_user_id: p.user_id });
-    if (error) { toast.error(error.message); return; }
+    try {
+      await deleteUserPermanentlyRequest(p.user_id);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "تعذر حذف الحساب");
+      return;
+    }
     toast.success("تم حذف الحساب نهائياً");
     fetchUsers();
   };

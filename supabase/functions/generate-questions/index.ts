@@ -8,6 +8,8 @@ const corsHeaders = {
 const MODEL = "google/gemini-3-flash-preview";
 const DZEXAMS_URL = "https://www.dzexams.com/";
 
+type RequestedType = "multiple_choice" | "text" | "matching" | "lessons_list" | "lesson_summary";
+
 type IncomingRequest = {
   topic?: string;
   count?: number;
@@ -30,7 +32,37 @@ type AiPayload = {
   summary?: unknown;
 };
 
+type PairMap = Record<string, string>;
+
+type QuestionOutput = {
+  question_text: string;
+  options?: string[];
+  correct_answer: string;
+  time_limit: number;
+  matching_pairs?: string[];
+};
+
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+
+const normalizeRequestedType = (value: string | undefined): RequestedType => {
+  switch (value) {
+    case "text":
+      return "text";
+    case "matching":
+      return "matching";
+    case "lessons_list":
+      return "lessons_list";
+    case "lesson_summary":
+      return "lesson_summary";
+    default:
+      return "multiple_choice";
+  }
+};
+
+const normalizeLevel = (value: string | undefined): string => {
+  const clean = typeof value === "string" ? value.trim() : "";
+  return clean || "general";
+};
 
 const asStringArray = (value: unknown): string[] => {
   if (!Array.isArray(value)) return [];
@@ -39,6 +71,22 @@ const asStringArray = (value: unknown): string[] => {
     .map((item) => String(item).trim())
     .filter((item) => item.length > 0);
 };
+
+const dedupeStrings = (items: string[]): string[] => {
+  const seen = new Set<string>();
+  const output: string[] = [];
+
+  for (const item of items) {
+    const key = item.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push(item);
+  }
+
+  return output;
+};
+
+const equalsIgnoreCase = (a: string, b: string): boolean => a.trim().toLowerCase() === b.trim().toLowerCase();
 
 const toCorrectAnswer = (value: unknown): string => {
   if (typeof value === "string") return value.trim();
@@ -60,7 +108,7 @@ const parseJsonLoose = (raw: string): unknown => {
   try {
     return JSON.parse(trimmed);
   } catch {
-    // Fallback below.
+    // Continue to fallback parsers.
   }
 
   const withoutFence = trimmed
@@ -97,6 +145,7 @@ const extractPayload = (data: unknown): AiPayload => {
   }
 
   const content = message?.content;
+
   if (typeof content === "string" && content.trim()) {
     return parseJsonLoose(content) as AiPayload;
   }
@@ -107,7 +156,6 @@ const extractPayload = (data: unknown): AiPayload => {
         if (part && typeof part === "object" && "text" in part) {
           return String((part as { text: unknown }).text ?? "");
         }
-
         return "";
       })
       .join(" ")
@@ -121,79 +169,207 @@ const extractPayload = (data: unknown): AiPayload => {
   throw new Error("No structured payload returned by AI");
 };
 
+const toPairMap = (value: unknown): PairMap | null => {
+  if (!value) return null;
+
+  let parsed: unknown = value;
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      return null;
+    }
+  }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return null;
+  }
+
+  const output: PairMap = {};
+
+  for (const [left, right] of Object.entries(parsed as Record<string, unknown>)) {
+    const leftText = String(left).trim();
+    const rightText = String(right ?? "").trim();
+
+    if (!leftText || !rightText) continue;
+    output[leftText] = rightText;
+  }
+
+  return Object.keys(output).length > 0 ? output : null;
+};
+
+const normalizeQuestion = (
+  question: AiQuestion,
+  requestedType: RequestedType,
+  fallbackTimeLimit: number,
+): QuestionOutput | null => {
+  const questionText = typeof question.question_text === "string" ? question.question_text.trim() : "";
+  if (!questionText) return null;
+
+  const timeLimit = clamp(Math.round(Number(question.time_limit) || fallbackTimeLimit || 30), 15, 120);
+
+  if (requestedType === "text") {
+    const correctAnswer = toCorrectAnswer(question.correct_answer);
+    if (!correctAnswer) return null;
+
+    return {
+      question_text: questionText,
+      correct_answer: correctAnswer,
+      time_limit: timeLimit,
+    };
+  }
+
+  if (requestedType === "matching") {
+    let options = asStringArray(question.options);
+    let matchingPairs = asStringArray(question.matching_pairs);
+    let pairMap = toPairMap(question.correct_answer);
+
+    if (!pairMap && options.length >= 2 && matchingPairs.length >= 2) {
+      const pairCount = Math.min(options.length, matchingPairs.length);
+      pairMap = {};
+
+      for (let i = 0; i < pairCount; i += 1) {
+        pairMap[options[i]] = matchingPairs[i];
+      }
+    }
+
+    if (!pairMap) return null;
+
+    if (!options.length || !matchingPairs.length) {
+      options = Object.keys(pairMap);
+      matchingPairs = options.map((left) => pairMap![left]);
+    }
+
+    const pairCount = Math.min(options.length, matchingPairs.length);
+    if (pairCount < 2) return null;
+
+    options = options.slice(0, pairCount);
+    matchingPairs = matchingPairs.slice(0, pairCount);
+
+    const orderedMap: PairMap = {};
+
+    for (let i = 0; i < pairCount; i += 1) {
+      orderedMap[options[i]] = matchingPairs[i];
+    }
+
+    return {
+      question_text: questionText,
+      options,
+      correct_answer: JSON.stringify(orderedMap),
+      time_limit: timeLimit,
+      matching_pairs: matchingPairs,
+    };
+  }
+
+  let options = dedupeStrings(asStringArray(question.options));
+  let correctAnswer = toCorrectAnswer(question.correct_answer);
+
+  if (!correctAnswer && options.length > 0) {
+    [correctAnswer] = options;
+  }
+
+  if (!correctAnswer) return null;
+
+  if (!options.some((option) => equalsIgnoreCase(option, correctAnswer))) {
+    options = [correctAnswer, ...options];
+  }
+
+  if (options.length > 4) {
+    const withoutAnswer = options.filter((option) => !equalsIgnoreCase(option, correctAnswer));
+    options = [correctAnswer, ...withoutAnswer].slice(0, 4);
+  }
+
+  if (options.length < 2) return null;
+
+  return {
+    question_text: questionText,
+    options,
+    correct_answer: correctAnswer,
+    time_limit: timeLimit,
+  };
+};
+
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
+  }
 
   try {
     const body = (await req.json()) as IncomingRequest;
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+
+    if (!LOVABLE_API_KEY) {
+      throw new Error("LOVABLE_API_KEY is not configured");
+    }
 
     const topic = typeof body.topic === "string" ? body.topic.trim() : "";
-    if (!topic) throw new Error("Topic is required");
+    if (!topic) {
+      throw new Error("Topic is required");
+    }
 
-    const requestedType = typeof body.type === "string" ? body.type : "multiple_choice";
+    const requestedType = normalizeRequestedType(body.type);
     const questionCount = clamp(Math.round(Number(body.count ?? 5) || 5), 1, 30);
-    const level = typeof body.level === "string" && body.level.trim() ? body.level.trim() : "ط¹ط§ظ…";
-    const isAlgerian = body.aiMode === "algerian";
+    const level = normalizeLevel(body.level);
 
-    const questionTypeLabel =
-      requestedType === "text"
-        ? "short_answer"
-        : requestedType === "matching"
-          ? "matching"
-          : "multiple_choice";
+    const isAlgerian =
+      body.aiMode === "algerian" ||
+      requestedType === "lessons_list" ||
+      requestedType === "lesson_summary";
 
-    const sourceConstraint = isAlgerian
-      ? `Primary reference for Algerian exam style: ${DZEXAMS_URL}. Use this style only, and avoid non-Algerian exam phrasing.`
-      : "Use clear educational Arabic with consistent difficulty.";
-
-    const systemPrompt = `You are an Arabic educational content generator. ${sourceConstraint}`;
-
-    const matchingHint =
-      requestedType === "matching"
-        ? "For matching questions: set options as left column items, matching_pairs as right column items, and encode pair mapping in correct_answer as a JSON string object."
-        : "";
-
-    const multipleChoiceHint =
-      requestedType === "multiple_choice"
-        ? "For each question, provide exactly 4 options and one correct answer that matches one option exactly."
-        : "";
+    const systemPrompt = isAlgerian
+      ? [
+        "You are an Arabic educational content generator specialized in Algerian curriculum content.",
+        `هام جداً ورئيسي: استعن حصرياً بموقع الاختبارات الجزائري ${DZEXAMS_URL}. يجب أن تكون الأسئلة مستوحاة حرفياً من الفروض والاختبارات الحقيقية الموجودة في ذلك الموقع للمستوى المطلوب. يُمنع منعاً باتاً اختلاق أو تأليف أسئلة من خيالك.`,
+        "Keep tone exam-like, clear, and aligned with Algerian official curriculum conventions.",
+        "Do not use non-Algerian curriculum framing.",
+        "Always output Arabic educational content.",
+      ].join("\n")
+      : [
+        "You are an Arabic educational content generator.",
+        "Generate high-quality and level-appropriate educational material in Arabic.",
+      ].join("\n");
 
     const userPrompt =
       requestedType === "lessons_list"
         ? [
-            `Task: list key lessons for topic "${topic}" at level "${level}" in the Algerian curriculum.`,
-            "Output language: Arabic.",
-            isAlgerian ? `Style reference: ${DZEXAMS_URL}.` : "",
-            "Return 5 to 10 concise lesson titles.",
-            'Return strictly JSON: {"lessons":["..."]}.',
-          ]
-            .filter(Boolean)
-            .join("\n")
+          `Task: List key lessons for topic "${topic}" at level "${level}".`,
+          isAlgerian ? "CRITICAL: The lessons list must be exactly the ones from the official Algerian curriculum as seen on dzexams.com. Do not invent lessons." : "",
+          "Return 5 to 10 concise lesson titles.",
+          "Return JSON only with this shape:",
+          '{"lessons":["..."]}',
+        ].filter(Boolean).join("\n")
         : requestedType === "lesson_summary"
           ? [
-              `Task: write a clear study summary for lesson/topic "${topic}" at level "${level}".`,
-              "Output language: Arabic.",
-              isAlgerian ? `Use Algerian curriculum framing and style from ${DZEXAMS_URL}.` : "",
-              'Return strictly JSON: {"summary":"..."}.',
-            ]
-              .filter(Boolean)
-              .join("\n")
+            `Task: Write a concise study summary for lesson/topic "${topic}" at level "${level}".`,
+            isAlgerian ? "CRITICAL: Content must be accurately derived from real Algerian lessons on dzexams.com without hallucinations, using accurate educational terms." : "",
+            "Summary should be clear and structured for revision.",
+            "Return JSON only with this shape:",
+            '{"summary":"..."}',
+          ].filter(Boolean).join("\n")
           : [
-              `Task: generate ${questionCount} ${questionTypeLabel} exam questions in Arabic.`,
-              `Topic: "${topic}"`,
-              `Level: "${level}"`,
-              isAlgerian ? `Reference and style must follow ${DZEXAMS_URL} only.` : "",
-              isAlgerian ? "Do not use non-Algerian curriculum framing." : "",
-              "Questions must be educational, accurate, and level-appropriate.",
-              multipleChoiceHint,
-              matchingHint,
-              'Return strictly JSON: {"questions":[{"question_text":"...","options":["..."],"correct_answer":"...","time_limit":30,"matching_pairs":["..."]}] }.',
-              "For non-matching questions, omit matching_pairs.",
-            ]
-              .filter(Boolean)
-              .join("\n");
+            `Task: Generate ${questionCount} Arabic questions.`,
+            `Topic: "${topic}"`,
+            `Level: "${level}"`,
+            `Question type: "${requestedType}"`,
+            isAlgerian ? "CRITICAL: You MUST extract and provide verbatim questions exactly as they appear on actual Algerian exams from dzexams.com for this topic/level. Do NOT hallucinate, invent or create your own questions." : "",
+            requestedType === "multiple_choice"
+              ? "For each question, provide exactly 4 options and one correct answer equal to one option."
+              : "",
+            requestedType === "text"
+              ? "For text questions, omit options and provide a concise correct answer."
+              : "",
+            requestedType === "matching"
+              ? "For matching questions, provide options (left list), matching_pairs (right list), and correct_answer as a JSON string map."
+              : "",
+            "Return JSON only with this shape:",
+            '{"questions":[{"question_text":"...","options":["..."],"correct_answer":"...","time_limit":30,"matching_pairs":["..."]}]}',
+          ]
+            .filter(Boolean)
+            .join("\n");
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -203,6 +379,7 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         model: MODEL,
+        temperature: isAlgerian ? 0.2 : 0.4,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
@@ -212,7 +389,7 @@ serve(async (req) => {
             type: "function",
             function: {
               name: "generate_payload",
-              description: "Generate Arabic educational payload for questions, lessons list, or summary",
+              description: "Generate educational payload as JSON",
               parameters: {
                 type: "object",
                 properties: {
@@ -223,11 +400,16 @@ serve(async (req) => {
                       properties: {
                         question_text: { type: "string" },
                         options: { type: "array", items: { type: "string" } },
-                        correct_answer: { type: "string" },
+                        correct_answer: {
+                          anyOf: [
+                            { type: "string" },
+                            { type: "object", additionalProperties: { type: "string" } },
+                          ],
+                        },
                         time_limit: { type: "number" },
                         matching_pairs: { type: "array", items: { type: "string" } },
                       },
-                      required: ["question_text", "correct_answer", "time_limit"],
+                      required: ["question_text", "correct_answer"],
                       additionalProperties: false,
                     },
                   },
@@ -248,14 +430,14 @@ serve(async (req) => {
 
     if (!response.ok) {
       if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "طھظ… طھط¬ط§ظˆط² ط­ط¯ ط§ظ„ط·ظ„ط¨ط§طھطŒ ط­ط§ظˆظ„ ظ„ط§ط­ظ‚ط§" }), {
+        return new Response(JSON.stringify({ error: "Too many requests, try again later." }), {
           status: 429,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
 
       if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "ظٹط±ط¬ظ‰ ط¥ط¶ط§ظپط© ط±طµظٹط¯ ظ„ظ„ظ…ط­ظپط¸ط©" }), {
+        return new Response(JSON.stringify({ error: "Please add wallet credits." }), {
           status: 402,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -270,9 +452,11 @@ serve(async (req) => {
     const payload = extractPayload(aiData);
 
     if (requestedType === "lessons_list") {
-      const lessons = asStringArray(payload.lessons).slice(0, 10);
+      const lessons = dedupeStrings(asStringArray(payload.lessons)).slice(0, 10);
 
-      if (!lessons.length) throw new Error("No lessons generated");
+      if (!lessons.length) {
+        throw new Error("No lessons generated");
+      }
 
       return new Response(JSON.stringify({ lessons }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -282,7 +466,9 @@ serve(async (req) => {
     if (requestedType === "lesson_summary") {
       const summary = typeof payload.summary === "string" ? payload.summary.trim() : "";
 
-      if (!summary) throw new Error("No summary generated");
+      if (!summary) {
+        throw new Error("No summary generated");
+      }
 
       return new Response(JSON.stringify({ summary }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -292,30 +478,13 @@ serve(async (req) => {
     const rawQuestions = Array.isArray(payload.questions) ? payload.questions : [];
 
     const questions = rawQuestions
-      .map((question) => {
-        const questionText = typeof question.question_text === "string" ? question.question_text.trim() : "";
-        const correctAnswer = toCorrectAnswer(question.correct_answer);
-        const options = asStringArray(question.options);
-        const matchingPairs = asStringArray(question.matching_pairs);
-        const timeLimit = clamp(Math.round(Number(question.time_limit) || 30), 15, 120);
-
-        if (!questionText || !correctAnswer) return null;
-
-        if (requestedType === "multiple_choice" && options.length < 2) return null;
-        if (requestedType === "matching" && (options.length < 2 || matchingPairs.length < 2)) return null;
-
-        return {
-          question_text: questionText,
-          options: options.length ? options : undefined,
-          correct_answer: correctAnswer,
-          time_limit: timeLimit,
-          matching_pairs: matchingPairs.length ? matchingPairs : undefined,
-        };
-      })
-      .filter((question): question is NonNullable<typeof question> => question !== null)
+      .map((question) => normalizeQuestion(question, requestedType, 30))
+      .filter((question): question is QuestionOutput => question !== null)
       .slice(0, questionCount);
 
-    if (!questions.length) throw new Error("No questions generated");
+    if (!questions.length) {
+      throw new Error("No questions generated");
+    }
 
     return new Response(JSON.stringify({ questions }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

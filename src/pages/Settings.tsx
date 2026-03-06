@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import StarsBackground from "@/components/StarsBackground";
 import { toast } from "sonner";
+import { deleteUserPermanently } from "@/lib/deleteUserPermanently";
 import {
   ArrowRight, User, Lock, Clock, Shield, Save, Trash2, AlertTriangle,
   Brain, Eye, EyeOff, Download, FileText, LogOut, Palette, Info
@@ -101,8 +102,7 @@ const Settings = () => {
     if (deleteText !== "حذف حسابي") { toast.error('اكتب "حذف حسابي" للتأكيد'); return; }
     setDeleting(true);
     try {
-      const { error } = await supabase.rpc("delete_user_permanently", { target_user_id: user.id });
-      if (error) throw error;
+      await deleteUserPermanently(user.id);
 
       await signOut();
       toast.success("تم حذف بيانات حسابك نهائياً");
