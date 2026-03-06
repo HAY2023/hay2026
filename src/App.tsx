@@ -15,6 +15,7 @@ import ProExam from "./pages/ProExam";
 import Support from "./pages/Support";
 import Settings from "./pages/Settings";
 import Curriculum from "./pages/Curriculum";
+import Library from "./pages/Library";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -38,6 +39,7 @@ const App = () => (
             <Route path="/support" element={<Support />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/curriculum" element={<Curriculum />} />
+            <Route path="/library" element={<Library />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
