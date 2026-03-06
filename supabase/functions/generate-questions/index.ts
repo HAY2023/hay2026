@@ -132,6 +132,18 @@ const parseJsonLoose = (raw: string): unknown => {
 
 const extractPayload = (data: unknown): AiPayload => {
   const typed = data as Record<string, unknown>;
+
+  // Try Gemini format first
+  const candidates = typed?.candidates as Array<Record<string, unknown>> | undefined;
+  if (candidates && candidates.length > 0) {
+    const parts = (candidates[0].content as Record<string, unknown>)?.parts as Array<Record<string, unknown>> | undefined;
+    const text = parts?.[0]?.text;
+    if (typeof text === "string" && text.trim()) {
+      return parseJsonLoose(text) as AiPayload;
+    }
+  }
+
+  // Fallback to OpenAI format if needed
   const choices = typed?.choices as Array<Record<string, unknown>> | undefined;
   const message = choices?.[0]?.message as Record<string, unknown> | undefined;
 
@@ -148,22 +160,6 @@ const extractPayload = (data: unknown): AiPayload => {
 
   if (typeof content === "string" && content.trim()) {
     return parseJsonLoose(content) as AiPayload;
-  }
-
-  if (Array.isArray(content)) {
-    const text = content
-      .map((part) => {
-        if (part && typeof part === "object" && "text" in part) {
-          return String((part as { text: unknown }).text ?? "");
-        }
-        return "";
-      })
-      .join(" ")
-      .trim();
-
-    if (text) {
-      return parseJsonLoose(text) as AiPayload;
-    }
   }
 
   throw new Error("No structured payload returned by AI");
@@ -300,10 +296,10 @@ serve(async (req) => {
 
   try {
     const body = (await req.json()) as IncomingRequest;
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const geminiApiKey = Deno.env.get("GEMINI_API_KEY");
 
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    if (!geminiApiKey) {
+      throw new Error("GEMINI_API_KEY is not configured");
     }
 
     const topic = typeof body.topic === "string" ? body.topic.trim() : "";
@@ -371,60 +367,23 @@ serve(async (req) => {
             .filter(Boolean)
             .join("\n");
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
+
+    const response = await fetch(geminiUrl, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: MODEL,
-        temperature: isAlgerian ? 0.2 : 0.4,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        tools: [
+        contents: [
           {
-            type: "function",
-            function: {
-              name: "generate_payload",
-              description: "Generate educational payload as JSON",
-              parameters: {
-                type: "object",
-                properties: {
-                  questions: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        question_text: { type: "string" },
-                        options: { type: "array", items: { type: "string" } },
-                        correct_answer: {
-                          anyOf: [
-                            { type: "string" },
-                            { type: "object", additionalProperties: { type: "string" } },
-                          ],
-                        },
-                        time_limit: { type: "number" },
-                        matching_pairs: { type: "array", items: { type: "string" } },
-                      },
-                      required: ["question_text", "correct_answer"],
-                      additionalProperties: false,
-                    },
-                  },
-                  lessons: {
-                    type: "array",
-                    items: { type: "string" },
-                  },
-                  summary: { type: "string" },
-                },
-                additionalProperties: false,
-              },
-            },
-          },
+            parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }]
+          }
         ],
-        tool_choice: { type: "function", function: { name: "generate_payload" } },
+        generationConfig: {
+          temperature: isAlgerian ? 0.2 : 0.4,
+          response_mime_type: "application/json"
+        }
       }),
     });
 

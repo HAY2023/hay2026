@@ -10,45 +10,44 @@ serve(async (req) => {
 
   try {
     const { subject, year, level } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    const geminiApiKey = Deno.env.get("GEMINI_API_KEY");
+    if (!geminiApiKey) throw new Error("GEMINI_API_KEY is not configured");
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          {
-            role: "system",
-            content: `أنت معلم جزائري متخصص في إنشاء ملخصات شاملة للكتب المدرسية الجزائرية.
+    const systemPrompt = `أنت معلم جزائري متخصص في إنشاء ملخصات شاملة للكتب المدرسية الجزائرية.
 أنشئ ملخصاً مفصلاً ومنظماً للكتاب المدرسي المطلوب يتضمن:
 - أهم المحاور والوحدات في الكتاب
 - المفاهيم الأساسية في كل وحدة
 - النقاط المهمة للامتحانات
 - نصائح للمراجعة
-اكتب بالعربية الفصحى واستخدم التنسيق المناسب.`
-          },
+اكتب بالعربية الفصحى واستخدم التنسيق المناسب.`;
+
+    const userPrompt = `أنشئ ملخصاً شاملاً لكتاب "${subject}" لمستوى "${year}" - ${level} حسب المنهج الدراسي الجزائري الرسمي.`;
+
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
+
+    const response = await fetch(geminiUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [
           {
-            role: "user",
-            content: `أنشئ ملخصاً شاملاً لكتاب "${subject}" لمستوى "${year}" - ${level} حسب المنهج الدراسي الجزائري الرسمي.`
+            parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }]
           }
         ],
-        max_tokens: 2000,
+        generationConfig: {
+          temperature: 0.3,
+        }
       }),
     });
 
     if (!response.ok) {
       const t = await response.text();
-      console.error("AI error:", response.status, t);
+      console.error("Gemini API error:", response.status, t);
       throw new Error("AI gateway error");
     }
 
     const data = await response.json();
-    const summary = data.choices?.[0]?.message?.content || "لم يتم توليد الملخص";
+    const summary = data.candidates?.[0]?.content?.parts?.[0]?.text || "لم يتم توليد الملخص";
 
     return new Response(JSON.stringify({ summary }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
