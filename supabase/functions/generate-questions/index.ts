@@ -1,6 +1,4 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -11,87 +9,127 @@ serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const geminiApiKey = Deno.env.get("GEMINI_API_KEY");
-
-    const supabase = createClient(supabaseUrl, supabaseServiceRole);
-
-    // 1. Auth & Subscription Check
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) throw new Error('Unauthorized: Missing token');
-
-    const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    if (authError || !user) throw new Error('Unauthorized: Invalid token');
-
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('is_activated, activation_expires_at, version')
-      .eq('user_id', user.id)
-      .single();
-
-    if (profileError || !profile || !profile.is_activated) {
-      return new Response(JSON.stringify({ error: "حسابك غير مفعل. يرجى إدخال كود التفعيل أولاً." }), {
-        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    if (profile.activation_expires_at && new Date(profile.activation_expires_at) < new Date()) {
-      return new Response(JSON.stringify({ error: "انتهت صلاحية اشتراكك. يرجى التجديد." }), {
-        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // 2. Process Request
     const { topic, count, type, level, aiMode } = await req.json();
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
     const levelMap: Record<string, string> = {
       "ابتدائي": "مستوى ابتدائي (سن 6-11)",
       "متوسط": "مستوى متوسط (سن 11-15)",
       "ثانوي": "مستوى ثانوي وبكالوريا (سن 15-18)",
-      "جامعي": "مستوى جامع",
+      "جامعي": "مستوى جامعي",
     };
+    const levelText = levelMap[level] || "جميع المستويات";
+
+    let questionType = "اختيار من متعدد (4 خيارات)";
+    let extraInstructions = "";
+    
+    if (type === "text") {
+      questionType = "كتابة (بدون خيارات)";
+    } else if (type === "matching") {
+      questionType = "ربط بين جملتين";
+      extraInstructions = `لأسئلة الربط: أنشئ أزواجاً من العناصر المتطابقة.
+      في حقل options ضع العناصر في العمود الأيسر (مثلاً: ["الجزائر", "تونس", "المغرب"])
+      في حقل correct_answer ضع الأزواج الصحيحة بصيغة JSON مثل: {"الجزائر":"الدينار","تونس":"الدينار","المغرب":"الدرهم"}
+      في حقل matching_pairs ضع العناصر في العمود الأيمن (مثلاً: ["الدينار", "الدرهم", "الدينار"])`;
+    }
 
     const isAlgerian = aiMode === "algerian";
+
     const systemPrompt = isAlgerian
-      ? "أنت أستاذ جزائري خبير في المنهج الدراسي الرسمي. قم بتوليد أسئلة مطابقة لنمط امتحانات dzexams.com."
-      : "أنت محرك أسئلة تعليمي متقدم باللغة العربية. قم بتوليد أسئلة دقيقة وشاملة.";
+      ? `أنت مولد أسئلة اختبارات تعليمية باللغة العربية متخصص حصرياً في المنهج الدراسي الجزائري.
+ركّز فقط على المواضيع المتعلقة بالتعليم في الجزائر والمنهج الجزائري الرسمي.
+استخدم المصطلحات والمفاهيم المعتمدة في الكتب المدرسية الجزائرية.
+أنشئ أسئلة بنفس أسلوب ونمط الامتحانات الرسمية الجزائرية الموجودة على موقع dzexams.com.
+اعتمد على نماذج البكالوريا والشهادات الرسمية الجزائرية كمرجع.
+أنشئ أسئلة دقيقة وتعليمية ومناسبة للمستوى المطلوب حسب البرنامج الجزائري.
+${extraInstructions}`
+      : `أنت مولد أسئلة اختبارات تعليمية قوي ومتقدم باللغة العربية.
+أنشئ أسئلة عميقة ودقيقة وشاملة عن أي موضوع.
+ركّز على الجودة العالية والتنوع في الأسئلة مع تغطية جوانب مختلفة من الموضوع.
+اجعل الأسئلة تحفّز التفكير النقدي والتحليلي.
+${extraInstructions}`;
 
-    const userPrompt = `موضوع الأسئلة: ${topic}
-المستوى: ${levelMap[level] || level}
-العدد المطلوب: ${count || 10}
-نوع الأسئلة: ${type === 'text' ? 'كتابية' : 'اختيار من متعدد'}
+    const userPrompt = isAlgerian
+      ? `أنشئ ${count || 5} أسئلة عن موضوع "${topic}" من نوع ${questionType} لمستوى ${levelText} حسب المنهج الدراسي الجزائري بأسلوب امتحانات dzexams.com.\n\nكل سؤال يجب أن يكون بهذا الشكل بالضبط.`
+      : `أنشئ ${count || 5} أسئلة متقدمة وعميقة عن موضوع "${topic}" من نوع ${questionType}.\n\nكل سؤال يجب أن يكون بهذا الشكل بالضبط.`;
 
-ملاحظة هامة: يجب أن تكون الأسئلة باللغة العربية الفصحى (مع لمسة جزائرية إذا كان النمط جزائري).
-أجب فقط بصيغة JSON تحتوي على مصفوفة باسم questions.`;
-
-    // 3. Direct Gemini Call
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
-
-    const geminiResp = await fetch(geminiUrl, {
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: `${systemPrompt}\n\n${userPrompt}\n\nيجب أن يكون الرد JSON فقط بهذا الهيكل: {"questions": [{"question_text": "...", "options": ["...", "..."], "correct_answer": "...", "time_limit": 30}]}` }] }],
-        generationConfig: { response_mime_type: "application/json" }
+        model: "google/gemini-3-flash-preview",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "generate_questions",
+              description: "Generate quiz questions in Arabic for Algerian curriculum",
+              parameters: {
+                type: "object",
+                properties: {
+                  questions: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        question_text: { type: "string", description: "نص السؤال بالعربية" },
+                        options: { type: "array", items: { type: "string" }, description: "4 خيارات (اختيار متعدد) أو عناصر العمود الأيسر (ربط)" },
+                        correct_answer: { type: "string", description: "الإجابة الصحيحة أو JSON للأزواج (ربط)" },
+                        time_limit: { type: "number", description: "المؤقت بالثواني (15-60)" },
+                        matching_pairs: { type: "array", items: { type: "string" }, description: "عناصر العمود الأيمن (فقط لأسئلة الربط)" }
+                      },
+                      required: ["question_text", "correct_answer", "time_limit"],
+                      additionalProperties: false
+                    }
+                  }
+                },
+                required: ["questions"],
+                additionalProperties: false
+              }
+            }
+          }
+        ],
+        tool_choice: { type: "function", function: { name: "generate_questions" } }
       }),
     });
 
-    if (!geminiResp.ok) throw new Error(`Gemini API error: ${geminiResp.statusText}`);
+    if (!response.ok) {
+      if (response.status === 429) {
+        return new Response(JSON.stringify({ error: "تم تجاوز حد الطلبات، حاول لاحقاً" }), {
+          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (response.status === 402) {
+        return new Response(JSON.stringify({ error: "يرجى إضافة رصيد للمحفظة" }), {
+          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const t = await response.text();
+      console.error("AI error:", response.status, t);
+      throw new Error("AI gateway error");
+    }
 
-    const geminiData = await geminiResp.json();
-    const result = JSON.parse(geminiData.candidates?.[0]?.content?.parts?.[0]?.text || '{"questions":[]}');
+    const data = await response.json();
+    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
+    if (!toolCall) throw new Error("No tool call in response");
+    
+    const result = JSON.parse(toolCall.function.arguments);
 
     return new Response(JSON.stringify(result), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
-
-  } catch (err: any) {
-    console.error("Error:", err);
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: err.message.includes('Unauthorized') ? 401 : 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
+  } catch (e) {
+    console.error("generate-questions error:", e);
+    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
+      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });

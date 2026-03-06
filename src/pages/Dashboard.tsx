@@ -104,20 +104,13 @@ const Dashboard = () => {
     if (!aiTopic.trim()) { toast.error("اكتب الموضوع"); return; }
     setAiLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error("No session found");
-
       const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-questions`;
       const resp = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
         body: JSON.stringify({ topic: aiTopic, count: aiCount, type: aiType, level: aiLevel, aiMode }),
       });
-      if (!resp.ok) {
-        const err = await resp.json();
-        toast.error(err.error || "حدث خطأ في توليد الأسئلة");
-        return;
-      }
+      if (!resp.ok) { const err = await resp.json(); toast.error(err.error || "حدث خطأ"); return; }
       const data = await resp.json();
       if (!data.questions?.length) { toast.error("لم يتم توليد أسئلة"); return; }
       const inserts = data.questions.map((q: any) => ({
@@ -252,25 +245,25 @@ const Dashboard = () => {
                       <Sparkles className="w-5 h-5 text-primary" />
                     </motion.div>
                   </div>
-                  <p className="text-xs text-muted-foreground text-right mb-3">اختر وضع الذكاء الاصطناعي</p>
-                  <div className="flex gap-2 mb-4 justify-end">
-                    <Button
-                      variant={aiMode === "algerian" ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setAiMode("algerian")}
-                      className={`rounded-xl gap-1 ${aiMode === "algerian" ? "gold-gradient text-background" : ""}`}
-                    >
-                      🇩🇿 منهج جزائري
-                    </Button>
-                    <Button
-                      variant={aiMode === "general" ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setAiMode("general")}
-                      className={`rounded-xl gap-1 ${aiMode === "general" ? "gold-gradient text-background" : ""}`}
-                    >
-                      🌍 عام متقدم
-                    </Button>
-                  </div>
+                   <p className="text-xs text-muted-foreground text-right mb-3">اختر وضع الذكاء الاصطناعي</p>
+                   <div className="flex gap-2 mb-4 justify-end">
+                     <Button
+                       variant={aiMode === "algerian" ? "default" : "outline"}
+                       size="sm"
+                       onClick={() => setAiMode("algerian")}
+                       className={`rounded-xl gap-1 ${aiMode === "algerian" ? "gold-gradient text-background" : ""}`}
+                     >
+                       🇩🇿 منهج جزائري
+                     </Button>
+                     <Button
+                       variant={aiMode === "general" ? "default" : "outline"}
+                       size="sm"
+                       onClick={() => setAiMode("general")}
+                       className={`rounded-xl gap-1 ${aiMode === "general" ? "gold-gradient text-background" : ""}`}
+                     >
+                       🌍 عام متقدم
+                     </Button>
+                   </div>
                   {categories.length === 0 ? (
                     <p className="text-sm text-muted-foreground text-right">أضف قسماً أولاً من تبويب "الأقسام"</p>
                   ) : (
@@ -280,7 +273,7 @@ const Dashboard = () => {
                         {categories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
                       </select>
                       <Input value={aiTopic} onChange={e => setAiTopic(e.target.value)} placeholder="الموضوع (مثال: تاريخ ثورة التحرير الجزائرية)" className="bg-secondary/50 text-right rounded-xl h-12" />
-                      <div className="grid grid-cols-3 gap-3">
+                       <div className="grid grid-cols-3 gap-3">
                         <div>
                           <label className="text-xs text-muted-foreground block mb-1">العدد</label>
                           <Input type="number" value={aiCount} onChange={e => setAiCount(parseInt(e.target.value) || 5)} min={1} max={20} className="bg-secondary/50 rounded-xl" />

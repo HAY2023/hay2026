@@ -40,7 +40,7 @@ const ProExam = () => {
   if (loading) return null;
   if (!user) return <Navigate to="/auth" replace />;
   if (!isActivated) return <Navigate to="/pending" replace />;
-
+  
   const isPro = profile?.version === "pro";
   if (!isPro) return <Navigate to="/" replace />;
 
@@ -60,23 +60,13 @@ const ProExam = () => {
     if (!topic.trim()) { toast.error("اكتب الموضوع"); return; }
     setGenerating(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error("No session found");
-
       const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-questions`;
       const resp = await fetch(url, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`
-        },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
         body: JSON.stringify({ topic, count, type: "multiple_choice", level, aiMode: "algerian" }),
       });
-      if (!resp.ok) {
-        const err = await resp.json();
-        toast.error(err.error || "خطأ في توليد الأسئلة");
-        return;
-      }
+      if (!resp.ok) { const err = await resp.json(); toast.error(err.error || "خطأ"); return; }
       const data = await resp.json();
       if (!data.questions?.length) { toast.error("لم يتم توليد أسئلة"); return; }
       setQuestions(data.questions);
@@ -100,8 +90,6 @@ const ProExam = () => {
       return;
     }
     setSubmitted(true);
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
     setCorrecting(true);
 
     // Correct each answer with AI teacher
@@ -110,10 +98,7 @@ const ProExam = () => {
       try {
         const resp = await fetch(url, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${session.access_token}`
-          },
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
           body: JSON.stringify({
             question: questions[i].question_text,
             userAnswer: answers[i],
@@ -125,9 +110,7 @@ const ProExam = () => {
           const data = await resp.json();
           setCorrections(prev => ({ ...prev, [i]: data.correction }));
         }
-      } catch (err) {
-        console.error("Correction error step", i, err);
-      }
+      } catch { /* skip */ }
     }
     setCorrecting(false);
   };
@@ -233,10 +216,11 @@ const ProExam = () => {
         <div className="flex gap-1 justify-center mb-4 flex-wrap">
           {questions.map((_, i) => (
             <button key={i} onClick={() => setCurrent(i)}
-              className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${current === i ? "bg-purple-500 text-white scale-110" :
+              className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${
+                current === i ? "bg-purple-500 text-white scale-110" :
                 submitted ? (isCorrect(i) ? "bg-green-500/20 text-green-400" : "bg-destructive/20 text-destructive") :
-                  answers[i] ? "bg-primary/20 text-primary" : "bg-secondary/50 text-muted-foreground"
-                }`}>
+                answers[i] ? "bg-primary/20 text-primary" : "bg-secondary/50 text-muted-foreground"
+              }`}>
               {i + 1}
             </button>
           ))}
