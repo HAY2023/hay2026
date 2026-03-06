@@ -10,41 +10,58 @@ serve(async (req) => {
 
   try {
     const { question, userAnswer, correctAnswer, topic, level } = await req.json();
-    const geminiApiKey = Deno.env.get("GEMINI_API_KEY");
-    if (!geminiApiKey) throw new Error("GEMINI_API_KEY is not configured");
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
-    const systemPrompt = `أنت أستاذ وموجه تعليمي ذكي (AI Teacher) في منصة HAY 2026. مهمتك تصحيح إجابات التلاميذ بأسلوب علمي، دقيق، ومحفز جداً.
-خطواتك:
-1. التقييم: هل الإجابة صحيحة كلياً، جزئياً، أم خاطئة؟
-2. التصحيح المبسط: اشرح الإجابة الصحيحة بأسلوب يناسب مستوى التلميذ (ابتدائي يستدعي لغة بسيطة، ثانوي يستدعي مصطلحات دقيقة).
-3. الفائدة الإضافية: قدّم "معلومة ذهبية" أو "سر للنجاح" مرتبط بالسؤال.
-4. التشجيع: استخدم إيموجي وحفز التلميذ للتقدم.
-ملاحظة: كن مباشراً ولا تطل الشرح كثيراً، بل اجعله مركزاً وعملياً.`;
-
-    const userPrompt = `الموضوع: ${topic || "عام"}
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-3-flash-preview",
+        messages: [
+          {
+            role: "system",
+            content: `أنت أستاذ جزائري متخصص في التعليم. تقوم بتصحيح إجابات التلاميذ بطريقة تعليمية.
+عند تصحيح كل إجابة:
+1. حدد إن كانت صحيحة أو خاطئة
+2. اشرح الإجابة الصحيحة بشكل مبسط
+3. أضف معلومة إضافية مفيدة
+4. شجع التلميذ بأسلوب إيجابي
+استخدم إيموجي مناسبة. كن مختصراً ومفيداً.`
+          },
+          {
+            role: "user",
+            content: `الموضوع: ${topic || "عام"}
 المستوى: ${level || "متوسط"}
 السؤال: ${question}
 إجابة التلميذ: ${userAnswer}
-الإجابة النموذجية (للمرجع فقط): ${correctAnswer}
+الإجابة الصحيحة: ${correctAnswer}
 
-قم بالرد مباشرة باللغة العربية الفصحى.`;
-
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
-
-    const response = await fetch(geminiUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }] }]
+صحح هذه الإجابة كأستاذ.`
+          }
+        ],
       }),
     });
 
     if (!response.ok) {
-      throw new Error(`Gemini API error: ${response.statusText}`);
+      if (response.status === 429) {
+        return new Response(JSON.stringify({ error: "تم تجاوز حد الطلبات، حاول لاحقاً" }), {
+          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      if (response.status === 402) {
+        return new Response(JSON.stringify({ error: "يرجى إضافة رصيد" }), {
+          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      throw new Error("AI gateway error");
     }
 
     const data = await response.json();
-    const correction = data.candidates?.[0]?.content?.parts?.[0]?.text || "عذراً، لم أتمكن من التصحيح في هذا الوقت.";
+    const correction = data.choices?.[0]?.message?.content || "لم يتم التصحيح";
 
     return new Response(JSON.stringify({ correction }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

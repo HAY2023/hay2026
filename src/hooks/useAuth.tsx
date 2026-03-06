@@ -7,14 +7,7 @@ interface AuthContext {
   session: Session | null;
   isAdmin: boolean;
   isActivated: boolean;
-  profile: {
-    display_name: string | null;
-    is_activated: boolean;
-    activation_code: string | null;
-    version: string | null;
-    activation_started_at: string | null;
-    activation_expires_at: string | null;
-  } | null;
+  profile: { display_name: string | null; is_activated: boolean; activation_code: string | null; version: string | null; activation_expires_at: string | null } | null;
   loading: boolean;
   signUp: (email: string, password: string, displayName: string) => Promise<{ error: string | null }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
@@ -34,21 +27,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const fetchProfile = useCallback(async (userId: string) => {
     const { data: p } = await supabase.from("profiles").select("*").eq("user_id", userId).single();
     if (p) {
-      const startedAt = p.activation_started_at ?? null;
-      const expiresAt = p.activation_expires_at;
-      const now = new Date();
-      const hasStarted = !startedAt || new Date(startedAt) <= now;
-      const hasExpired = !!expiresAt && new Date(expiresAt) < now;
-
-      setProfile({
-        display_name: p.display_name,
-        is_activated: p.is_activated,
-        activation_code: p.activation_code,
-        version: p.version ?? "hay",
-        activation_started_at: startedAt,
-        activation_expires_at: expiresAt ?? null,
-      });
-      setIsActivated(p.is_activated && hasStarted && !hasExpired);
+      setProfile({ display_name: p.display_name, is_activated: p.is_activated, activation_code: p.activation_code, version: (p as any).version ?? "hay", activation_expires_at: (p as any).activation_expires_at ?? null });
+      // Check if activation expired
+      const expiresAt = (p as any).activation_expires_at;
+      if (p.is_activated && expiresAt && new Date(expiresAt) < new Date()) {
+        setIsActivated(false);
+      } else {
+        setIsActivated(p.is_activated);
+      }
     }
     const { data: roles } = await supabase.from("user_roles").select("role").eq("user_id", userId);
     setIsAdmin(roles?.some((r) => r.role === "admin") ?? false);

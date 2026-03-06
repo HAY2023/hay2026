@@ -10,51 +10,63 @@ serve(async (req) => {
 
   try {
     const { userMessage, userProfile, ticketSubject } = await req.json();
-    const geminiApiKey = Deno.env.get("GEMINI_API_KEY");
-    if (!geminiApiKey) throw new Error("GEMINI_API_KEY is not configured");
+    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
-    const systemPrompt = `أنت مساعد دعم فني ذكي و محترف لموقع HAY 2026 التعليمي (الجزائر). مهمتك:
-1. تحليل مشكلة المستخدم بدقة واحترافية.
-2. اقتراح الإجراء الإداري المناسب في النظام (تفعيل/تعطيل الحساب، تغيير النسخة إلى PRO أو HAY، تمديد مدة الاستخدام).
-3. صياغة رد لبق وإيجابي للمستخدم يخفف من انزعاجه أو يوضح له سبب المشكلة.
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          {
+            role: "system",
+            content: `أنت مساعد دعم فني ذكي لموقع Quiz AI التعليمي. مهمتك:
+1. تحليل مشكلة المستخدم وتشخيصها
+2. اقتراح حل مناسب (تفعيل/تعطيل حساب، تغيير نسخة، تمديد مدة، إلخ)
+3. إرسال رد مفيد وواضح للمستخدم
 
 معلومات النظام:
-- النسخ: HAY (نسخة عادية/مجانية) و PRO (نسخة مدفوعة تحتوي ميزات الذكاء الاصطناعي).
-- التفعيل: يتم عن طريق قسم الإدارة. يمكن أن يكون لمدة أيام معينة أو تفعيل دائم.
+- النسخ المتاحة: HAY (أساسية) و PRO (متقدمة مع AI)
+- التفعيل يتم بأكواد بصيغة XXXXX-XXXXX-MM-YY
+- كل حساب له مدة تفعيل (أيام أو دائم)
+- الأدمن يمكنه تفعيل/تعطيل/ترقية الحسابات
 
-أجب فقط وحصراً بصيغة JSON بالتنسيق التالي:
+أجب بصيغة JSON:
 {
-  "diagnosis": "شرح المشكلة داخلياً للقسم الإداري",
+  "diagnosis": "تشخيص المشكلة باختصار",
   "suggestedAction": "none" | "activate" | "deactivate" | "extend" | "upgrade" | "downgrade" | "reset_password",
-  "suggestedDays": 30,
-  "suggestedVersion": "hay" | "pro",
-  "replyToUser": "الرد الاحترافي المقترح إرساله للمستخدم لحل مشكلته بأسلوب جزائري لبق",
+  "suggestedDays": number (إذا كان الإجراء extend أو activate),
+  "suggestedVersion": "hay" | "pro" (إذا كان الإجراء upgrade/downgrade),
+  "replyToUser": "الرد المقترح للمستخدم",
   "confidence": "high" | "medium" | "low"
-}`;
-
-    const userPrompt = `موضوع التذكرة: ${ticketSubject || "غير محدد"}
+}`
+          },
+          {
+            role: "user",
+            content: `موضوع التذكرة: ${ticketSubject || "غير محدد"}
 رسالة المستخدم: ${userMessage}
-معلومات حساب المستخدم في النظام: ${JSON.stringify(userProfile || {})}`;
-
-    // 3. Direct Gemini Call
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
-
-    const response = await fetch(geminiUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: `${systemPrompt}\n\n${userPrompt}\n\nيجب أن يكون الرد JSON فقط بهذا الهيكل: {"diagnosis": "...", "suggestedAction": "none", "suggestedDays": 0, "suggestedVersion": "hay", "replyToUser": "...", "confidence": "high"}` }] }],
-        generationConfig: { response_mime_type: "application/json" }
+معلومات الحساب: ${JSON.stringify(userProfile || {})}`
+          }
+        ],
       }),
     });
 
     if (!response.ok) {
-      throw new Error(`Gemini API error: ${response.statusText}`);
+      if (response.status === 429) {
+        return new Response(JSON.stringify({ error: "حد الطلبات، حاول لاحقاً" }), {
+          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      throw new Error("AI gateway error");
     }
 
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content || "";
-
+    
     // Parse JSON from AI response
     let result;
     try {
