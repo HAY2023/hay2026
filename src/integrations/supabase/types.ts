@@ -18,6 +18,7 @@ export type Database = {
         Row: {
           code: string
           created_at: string
+          duration_days: number
           id: string
           is_used: boolean
           used_at: string | null
@@ -27,6 +28,7 @@ export type Database = {
         Insert: {
           code: string
           created_at?: string
+          duration_days?: number
           id?: string
           is_used?: boolean
           used_at?: string | null
@@ -36,6 +38,7 @@ export type Database = {
         Update: {
           code?: string
           created_at?: string
+          duration_days?: number
           id?: string
           is_used?: boolean
           used_at?: string | null
@@ -146,10 +149,12 @@ export type Database = {
         Row: {
           activation_code: string | null
           activation_expires_at: string | null
+          activation_started_at: string | null
           created_at: string
           display_name: string | null
           id: string
           is_activated: boolean
+          tos_accepted: boolean
           updated_at: string
           user_id: string
           version: string | null
@@ -157,10 +162,12 @@ export type Database = {
         Insert: {
           activation_code?: string | null
           activation_expires_at?: string | null
+          activation_started_at?: string | null
           created_at?: string
           display_name?: string | null
           id?: string
           is_activated?: boolean
+          tos_accepted?: boolean
           updated_at?: string
           user_id: string
           version?: string | null
@@ -168,10 +175,12 @@ export type Database = {
         Update: {
           activation_code?: string | null
           activation_expires_at?: string | null
+          activation_started_at?: string | null
           created_at?: string
           display_name?: string | null
           id?: string
           is_activated?: boolean
+          tos_accepted?: boolean
           updated_at?: string
           user_id?: string
           version?: string | null
@@ -316,7 +325,7 @@ export type Database = {
       }
       activate_account_by_code: {
         Args: {
-          activation_code: string
+          code_text: string
         }
         Returns: {
           success: boolean
