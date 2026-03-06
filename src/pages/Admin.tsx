@@ -44,6 +44,15 @@ interface SupportTicket {
   created_at: string;
 }
 
+interface SupportMessage {
+  id: string;
+  ticket_id: string;
+  sender_id: string;
+  message: string;
+  is_admin: boolean;
+  created_at: string;
+}
+
 interface AIDiagnosis {
   diagnosis: string;
   suggestedAction: string;
@@ -66,6 +75,12 @@ const generateCode = (version: string): string => {
 };
 
 const DAY_MS = 1000 * 60 * 60 * 24;
+type AdminTab = "users" | "codes" | "tickets" | "settings";
+type ProfileActivationUpdate = {
+  is_activated: boolean;
+  activation_started_at: string | null;
+  activation_expires_at: string | null;
+};
 
 const toDateInputValue = (value: string | Date | null | undefined) => {
   const date = value ? new Date(value) : new Date();
@@ -89,14 +104,14 @@ const Admin = () => {
   const [users, setUsers] = useState<Profile[]>([]);
   const [codes, setCodes] = useState<ActivationCode[]>([]);
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
-  const [tab, setTab] = useState<"users" | "codes" | "tickets" | "settings">("users");
+  const [tab, setTab] = useState<AdminTab>("users");
   const [genVersion, setGenVersion] = useState<"hay" | "pro">("pro"); // Changed default to "pro"
   const [genCount, setGenCount] = useState(1);
   const [genDuration, setGenDuration] = useState(30); // Added genDuration state
   const [selectedUser, setSelectedUser] = useState<Profile | null>(null);
   const [userActivationWindows, setUserActivationWindows] = useState<Record<string, ActivationWindow>>({});
   const [replyText, setReplyText] = useState("");
-  const [ticketMessages, setTicketMessages] = useState<any[]>([]);
+  const [ticketMessages, setTicketMessages] = useState<SupportMessage[]>([]);
   const [selectedTicket, setSelectedTicket] = useState<string | null>(null);
   const [aiDiagnosis, setAiDiagnosis] = useState<AIDiagnosis | null>(null);
   const [diagnosing, setDiagnosing] = useState(false);
@@ -119,7 +134,7 @@ const Admin = () => {
 
   const fetchTicketMessages = async (ticketId: string) => {
     const { data } = await supabase.from("support_messages").select("*").eq("ticket_id", ticketId).order("created_at", { ascending: true });
-    if (data) setTicketMessages(data);
+    if (data) setTicketMessages(data as SupportMessage[]);
   };
 
   useEffect(() => {
@@ -186,7 +201,7 @@ const Admin = () => {
       return;
     }
 
-    const updates: any = {
+    const updates: ProfileActivationUpdate = {
       is_activated: true,
       activation_started_at: toStartOfDayIso(window.startDate),
       activation_expires_at: window.permanent ? null : toEndOfDayIso(window.endDate),
@@ -293,7 +308,7 @@ const Admin = () => {
 
   const getDaysRemaining = (expiresAt: string | null) => {
     if (!expiresAt) return null;
-    return Math.ceil((new Date(expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    return Math.ceil((new Date(expiresAt).getTime() - Date.now()) / DAY_MS);
   };
 
   // AI Diagnose for support ticket
@@ -346,16 +361,15 @@ const Admin = () => {
       if (action === "activate") {
         const days = aiDiagnosis.suggestedDays || 30;
         const activationStart = new Date();
-        const updates: any = {
+        const updates: ProfileActivationUpdate = {
           is_activated: true,
           activation_started_at: activationStart.toISOString(),
+          activation_expires_at: null,
         };
         if (days > 0) {
           const expires = new Date(activationStart);
           expires.setDate(expires.getDate() + days);
           updates.activation_expires_at = expires.toISOString();
-        } else {
-          updates.activation_expires_at = null;
         }
         await supabase.from("profiles").update(updates).eq("id", ticketUser.id);
         toast.success(`تم تفعيل حساب ${ticketUser.display_name} (${days} يوم)`);
@@ -421,7 +435,7 @@ const Admin = () => {
           </Button>
         </motion.div>
 
-        <Tabs value={tab} onValueChange={v => setTab(v as any)} className="w-full">
+        <Tabs value={tab} onValueChange={v => setTab(v as AdminTab)} className="w-full">
           <TabsList className="glass-card w-full justify-start mb-6 p-1 rounded-xl">
             <TabsTrigger value="users" className="gap-1 font-heading rounded-lg text-xs"><Users className="w-3.5 h-3.5" /> المستخدمون</TabsTrigger>
             <TabsTrigger value="codes" className="gap-1 font-heading rounded-lg text-xs"><KeyRound className="w-3.5 h-3.5" /> الأكواد</TabsTrigger>
@@ -484,32 +498,67 @@ const Admin = () => {
                         <option value="pro">PRO</option>
                       </select>
                       <Button variant="ghost" size="sm" onClick={() => setSelectedUser(selectedUser?.id === u.id ? null : u)} className="rounded-xl text-xs gap-1">
-                        <Bell className="w-3 h-3" /> إشعار
+                        <Settings className="w-3 h-3" /> إدارة
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => deleteUserPermanently(u)} className="rounded-xl text-xs gap-1 text-destructive">
+                        <Trash className="w-3 h-3" /> حذف
                       </Button>
                     </div>
                     <AnimatePresence>
                       {selectedUser?.id === u.id && (
                         <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="mt-3 space-y-2 border-t border-border/30 pt-3">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <Clock className="w-3.5 h-3.5 text-primary" />
-                            <span className="text-xs text-muted-foreground">مدة تفعيل هذا المستخدم:</span>
-                            <select value={getUserDays(u.id)} onChange={e => setUserDays(u.id, parseInt(e.target.value))}
-                              className="bg-secondary/50 border border-border/50 rounded-lg p-1 text-foreground text-xs">
-                              <option value={7}>7 أيام</option>
-                              <option value={15}>15 يوم</option>
-                              <option value={30}>30 يوم</option>
-                              <option value={90}>3 أشهر</option>
-                              <option value={180}>6 أشهر</option>
-                              <option value={365}>سنة</option>
-                              <option value={0}>دائم</option>
-                            </select>
+                          <div className="space-y-2 rounded-xl border border-border/40 p-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs text-muted-foreground">فترة التفعيل</span>
+                              <Button
+                                size="sm"
+                                variant={activationWindow.permanent ? "default" : "outline"}
+                                className="rounded-xl text-xs"
+                                onClick={() => setActivationWindow(
+                                  u,
+                                  activationWindow.permanent
+                                    ? { permanent: false, endDate: activationWindow.endDate || addDaysToDateValue(activationWindow.startDate, 30) }
+                                    : { permanent: true, endDate: "" },
+                                )}
+                              >
+                                {activationWindow.permanent ? "دائم" : "مؤقت"}
+                              </Button>
+                            </div>
+                            <div className="grid gap-2 md:grid-cols-2">
+                              <div className="space-y-1">
+                                <span className="text-xs text-muted-foreground">من</span>
+                                <Input
+                                  type="date"
+                                  dir="ltr"
+                                  value={activationWindow.startDate}
+                                  onChange={e => setActivationWindow(u, {
+                                    startDate: e.target.value,
+                                    endDate: activationWindow.permanent
+                                      ? activationWindow.endDate
+                                      : (activationWindow.endDate || addDaysToDateValue(e.target.value, 30)),
+                                  })}
+                                  className="bg-secondary/50 rounded-xl h-9 text-xs"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <span className="text-xs text-muted-foreground">إلى</span>
+                                <Input
+                                  type="date"
+                                  dir="ltr"
+                                  disabled={activationWindow.permanent}
+                                  value={activationWindow.permanent ? "" : activationWindow.endDate}
+                                  onChange={e => setActivationWindow(u, { endDate: e.target.value })}
+                                  className="bg-secondary/50 rounded-xl h-9 text-xs disabled:opacity-50"
+                                />
+                              </div>
+                            </div>
+                            <Button size="sm" onClick={() => saveActivationWindow(u)} className="gold-gradient text-background gap-1 rounded-xl text-xs w-full">
+                              <Clock className="w-3 h-3" /> حفظ الفترة
+                            </Button>
                           </div>
                           <div className="flex gap-2">
                             <Button size="sm" variant="outline" onClick={() => revokeStatus(u)} className="flex-1 rounded-xl text-xs gap-1 text-purple-400 border-purple-500/30">
                               <Shield className="w-3 h-3" /> سحب PRO
-                            </Button>
-                            <Button size="sm" variant="outline" onClick={() => deleteUserPermanently(u)} className="flex-1 rounded-xl text-xs gap-1 text-destructive border-destructive/30">
-                              <Trash className="w-3 h-3" /> حذف نهائي
                             </Button>
                           </div>
 
@@ -587,7 +636,7 @@ const Admin = () => {
                       {c.version.toUpperCase()}
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      ({(c as any).duration_days === 0 ? "دائم" : ((c as any).duration_days + " يوم")})
+                      ({c.duration_days === 0 ? "دائم" : `${c.duration_days} يوم`})
                     </span>
                     <code className="text-sm font-mono text-foreground truncate" dir="ltr">{c.code}</code>
                     {c.is_used && <span className="text-xs text-muted-foreground">✅ مستخدم</span>}
@@ -684,7 +733,7 @@ const Admin = () => {
                 </AnimatePresence>
 
                 <div className="space-y-2 max-h-80 overflow-y-auto">
-                  {ticketMessages.map((m: any) => (
+                  {ticketMessages.map((m) => (
                     <div key={m.id} className={`glass-card p-3 ${m.is_admin ? "border-primary/30 mr-6" : "ml-6"}`}>
                       <div className="flex items-center gap-2 mb-1">
                         <span className={`text-xs font-bold ${m.is_admin ? "text-primary" : "text-muted-foreground"}`}>

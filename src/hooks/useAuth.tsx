@@ -34,8 +34,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const fetchProfile = useCallback(async (userId: string) => {
     const { data: p } = await supabase.from("profiles").select("*").eq("user_id", userId).single();
     if (p) {
-      const startedAt = (p as any).activation_started_at ?? null;
-      const expiresAt = (p as any).activation_expires_at;
+      const startedAt = p.activation_started_at ?? null;
+      const expiresAt = p.activation_expires_at;
       const now = new Date();
       const hasStarted = !startedAt || new Date(startedAt) <= now;
       const hasExpired = !!expiresAt && new Date(expiresAt) < now;
@@ -44,7 +44,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         display_name: p.display_name,
         is_activated: p.is_activated,
         activation_code: p.activation_code,
-        version: (p as any).version ?? "hay",
+        version: p.version ?? "hay",
         activation_started_at: startedAt,
         activation_expires_at: expiresAt ?? null,
       });

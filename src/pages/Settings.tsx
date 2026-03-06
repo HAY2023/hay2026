@@ -107,9 +107,10 @@ const Settings = () => {
       await signOut();
       toast.success("تم حذف بيانات حسابك نهائياً");
       navigate("/auth");
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      toast.error("خطأ في الحذف: " + (err.message || "حاول مرة أخرى"));
+      const message = err instanceof Error ? err.message : "حاول مرة أخرى";
+      toast.error("خطأ في الحذف: " + message);
     }
     setDeleting(false);
   };
