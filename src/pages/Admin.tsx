@@ -16,6 +16,7 @@ interface Profile {
   display_name: string | null;
   is_activated: boolean;
   version: string | null;
+  activation_started_at: string | null;
   activation_expires_at: string | null;
 }
 
@@ -23,9 +24,16 @@ interface ActivationCode {
   id: string;
   code: string;
   version: string;
+  duration_days: number;
   is_used: boolean;
   used_by: string | null;
   created_at: string;
+}
+
+interface ActivationWindow {
+  startDate: string;
+  endDate: string;
+  permanent: boolean;
 }
 
 interface SupportTicket {
@@ -57,6 +65,24 @@ const generateCode = (version: string): string => {
   return `${rand(5)}-${rand(5)}-${mm}-${yy}`;
 };
 
+const DAY_MS = 1000 * 60 * 60 * 24;
+
+const toDateInputValue = (value: string | Date | null | undefined) => {
+  const date = value ? new Date(value) : new Date();
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return localDate.toISOString().slice(0, 10);
+};
+
+const addDaysToDateValue = (dateValue: string, days: number) => {
+  const date = new Date(`${dateValue}T00:00:00`);
+  date.setDate(date.getDate() + days);
+  return toDateInputValue(date);
+};
+
+const toStartOfDayIso = (dateValue: string) => new Date(`${dateValue}T00:00:00`).toISOString();
+const toEndOfDayIso = (dateValue: string) => new Date(`${dateValue}T23:59:59`).toISOString();
+const formatDate = (value: string | null) => value ? new Date(value).toLocaleDateString("en-GB") : "—";
+
 const Admin = () => {
   const { user, isAdmin, loading } = useAuth();
   const navigate = useNavigate();
@@ -68,7 +94,7 @@ const Admin = () => {
   const [genCount, setGenCount] = useState(1);
   const [genDuration, setGenDuration] = useState(30); // Added genDuration state
   const [selectedUser, setSelectedUser] = useState<Profile | null>(null);
-  const [userActivationDays, setUserActivationDays] = useState<Record<string, number>>({});
+  const [userActivationWindows, setUserActivationWindows] = useState<Record<string, ActivationWindow>>({});
   const [replyText, setReplyText] = useState("");
   const [ticketMessages, setTicketMessages] = useState<any[]>([]);
   const [selectedTicket, setSelectedTicket] = useState<string | null>(null);

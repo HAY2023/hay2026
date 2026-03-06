@@ -22,55 +22,33 @@ const Pending = () => {
   const handleRefresh = () => window.location.reload();
 
   const handleActivate = async () => {
-    if (!code.trim()) { toast.error("أدخل كود التفعيل"); return; }
+    if (!code.trim()) {
+      toast.error("أدخل كود التفعيل");
+      return;
+    }
+
     const pattern = /^[A-Za-z0-9]{5}-[A-Za-z0-9]{5}-\d{2}-\d{2}$/;
     if (!pattern.test(code.trim())) {
       toast.error("صيغة الكود غير صحيحة (XXXXX-XXXXX-12-26)");
       return;
     }
+
     setChecking(true);
     try {
-      // Check activation_codes table for universal codes
-      const { data: codeData, error: codeError } = await supabase
-        .from("activation_codes")
-        .select("*")
-        .eq("code", code.trim())
-        .eq("is_used", false)
-        .single();
+      const { data, error } = await supabase.rpc("activate_account_by_code", {
+        code_text: code.trim(),
+      });
 
-      if (codeError || !codeData) {
-        // Fallback: check profile's own activation_code
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("id, activation_code")
-          .eq("user_id", user.id)
-          .single();
-        
-        if (profile?.activation_code === code.trim()) {
-          await supabase.from("profiles").update({ is_activated: true }).eq("id", profile.id);
-          toast.success("تم تفعيل حسابك بنجاح! 🎉");
-          setTimeout(() => window.location.reload(), 1000);
-        } else {
-          toast.error("كود التفعيل غير صحيح أو مستخدم مسبقاً");
-        }
+      if (error) throw error;
+
+      const result = data as { success?: boolean; message?: string } | null;
+      if (!result?.success) {
+        toast.error(result?.message || "كود التفعيل غير صحيح أو مستخدم مسبقاً");
         setChecking(false);
         return;
       }
 
-      // Mark code as used
-      await supabase.from("activation_codes").update({
-        is_used: true,
-        used_by: user.id,
-        used_at: new Date().toISOString(),
-      }).eq("id", codeData.id);
-
-      // Activate profile with the version from the code
-      await supabase.from("profiles").update({
-        is_activated: true,
-        version: codeData.version,
-      }).eq("user_id", user.id);
-
-      toast.success(`تم تفعيل حسابك بنسخة ${codeData.version.toUpperCase()}! 🎉`);
+      toast.success(result.message || "تم تفعيل حسابك بنجاح");
       setTimeout(() => window.location.reload(), 1000);
     } catch {
       toast.error("حدث خطأ في التحقق");
@@ -101,7 +79,7 @@ const Pending = () => {
           </CardHeader>
           <CardContent className="space-y-5 pb-8">
             <p className="text-muted-foreground font-body leading-relaxed">
-              أدخل كود التفعيل لتفعيل حسابك واختيار النسخة (HAY أو PRO).
+              أدخل كود التفعيل لتفعيل حسابك وتطبيق النسخة والمدة المحددة عليه.
             </p>
 
             <div className="space-y-3">
@@ -121,9 +99,20 @@ const Pending = () => {
                 <span className="px-2 py-1 rounded-full bg-purple-500/20 text-purple-400 font-bold">PRO = متقدم + AI</span>
               </div>
               <motion.div whileTap={{ scale: 0.97 }}>
-                <Button onClick={handleActivate} disabled={checking}
-                  className="w-full gold-gradient text-background gap-2 rounded-xl shadow-lg shadow-primary/15">
-                  {checking ? <><Loader2 className="w-4 h-4 animate-spin" /> جاري التحقق...</> : <><KeyRound className="w-4 h-4" /> تفعيل بالكود</>}
+                <Button
+                  onClick={handleActivate}
+                  disabled={checking}
+                  className="w-full gold-gradient text-background gap-2 rounded-xl shadow-lg shadow-primary/15"
+                >
+                  {checking ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" /> جاري التحقق...
+                    </>
+                  ) : (
+                    <>
+                      <KeyRound className="w-4 h-4" /> تفعيل بالكود
+                    </>
+                  )}
                 </Button>
               </motion.div>
             </div>

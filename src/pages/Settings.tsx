@@ -50,8 +50,10 @@ const Settings = () => {
   if (!isActivated) return <Navigate to="/pending" replace />;
 
   const version = profile?.version || "hay";
+  const startedAt = profile?.activation_started_at;
   const expiresAt = profile?.activation_expires_at;
   const daysLeft = expiresAt ? Math.ceil((new Date(expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
+  const formatDate = (value: string) => new Date(value).toLocaleDateString("en-GB");
 
   const saveProfile = async () => {
     if (!displayName.trim()) { toast.error("الاسم مطلوب"); return; }
@@ -146,11 +148,17 @@ const Settings = () => {
               <span className="text-foreground text-xs" dir="ltr">{user.email}</span>
               <span className="text-muted-foreground">البريد</span>
             </div>
+            {startedAt && (
+              <div className="flex justify-between items-center">
+                <span className="text-foreground text-xs" dir="ltr">ظ…ظ†: {formatDate(startedAt)}</span>
+                <span className="text-muted-foreground">ط¨ط¯ط§ظٹط© ط§ظ„طھظپط¹ظٹظ„</span>
+              </div>
+            )}
             {expiresAt && (
               <div className="flex justify-between items-center">
                 <span className={`flex items-center gap-1 text-xs ${daysLeft !== null && daysLeft <= 7 ? "text-destructive" : "text-foreground"}`}>
                   <Clock className="w-3 h-3" />
-                  <span dir="ltr">إلى: {new Date(expiresAt).toLocaleDateString('en-GB')}</span>
+                  <span dir="ltr">إلى: {formatDate(expiresAt)}</span>
                   {daysLeft !== null && daysLeft > 0 ? ` (${daysLeft} يوم)` : " (منتهي)"}
                 </span>
                 <span className="text-muted-foreground">صلاحية التفعيل</span>
