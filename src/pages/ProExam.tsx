@@ -10,6 +10,7 @@ import {
   CheckCircle, XCircle, BookOpen, Send, Brain, Printer, RotateCcw
 } from "lucide-react";
 import { motion } from "framer-motion";
+import { curriculum } from "@/data/curriculum";
 
 interface ExamQuestion {
   question_text: string;
@@ -33,6 +34,10 @@ const ProExam = () => {
   const [correcting, setCorrecting] = useState(false);
   const [examStarted, setExamStarted] = useState(false);
   const examRef = useRef<HTMLDivElement>(null);
+  const [useManualTopic, setUseManualTopic] = useState(false);
+  const [selectedStage, setSelectedStage] = useState("");
+  const [selectedYear, setSelectedYear] = useState("");
+  const [selectedSubject, setSelectedSubject] = useState("");
 
   if (loading) return null;
   if (!user) return <Navigate to="/auth" replace />;
@@ -42,14 +47,28 @@ const ProExam = () => {
   if (!isPro) return <Navigate to="/" replace />;
 
   const generateExam = async () => {
-    if (!topic.trim()) { toast.error("اكتب الموضوع"); return; }
+    let examTopic = topic;
+    let examLevel = level;
+
+    if (!useManualTopic) {
+      // Curriculum-based
+      const stage = curriculum.find(s => s.id === selectedStage);
+      const year = stage?.years.find(y => y.id === selectedYear);
+      const subj = year?.subjects.find(s => s.id === selectedSubject);
+      if (!stage || !year || !subj) { toast.error("اختر المرحلة والسنة والمادة"); return; }
+      examTopic = `${subj.name} - ${year.name}`;
+      examLevel = stage.name;
+    } else {
+      if (!examTopic.trim()) { toast.error("اكتب الموضوع"); return; }
+    }
+
     setGenerating(true);
     try {
       const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-questions`;
       const resp = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
-        body: JSON.stringify({ topic, count, type: "multiple_choice", level, aiMode: "algerian" }),
+        body: JSON.stringify({ topic: examTopic, count, type: "multiple_choice", level: examLevel, aiMode: "algerian" }),
       });
       if (!resp.ok) { const err = await resp.json(); toast.error(err.error || "خطأ"); return; }
       const data = await resp.json();
@@ -59,6 +78,14 @@ const ProExam = () => {
       setAnswers({});
       setCorrections({});
       setSubmitted(false);
+      // Store topic for header display
+      if (!useManualTopic) {
+        const stage = curriculum.find(s => s.id === selectedStage);
+        const year = stage?.years.find(y => y.id === selectedYear);
+        const subj = year?.subjects.find(s => s.id === selectedSubject);
+        setTopic(`${subj?.name} - ${year?.name}`);
+        setLevel(stage?.name || level);
+      }
     } catch { toast.error("خطأ في الاتصال"); }
     finally { setGenerating(false); }
   };
@@ -146,27 +173,96 @@ const ProExam = () => {
             </div>
 
             <div className="space-y-3">
-              <Input value={topic} onChange={e => setTopic(e.target.value)}
-                placeholder="الموضوع (مثال: الحرب العالمية الأولى، الدوال العددية...)"
-                className="bg-secondary/50 text-right rounded-xl h-12" />
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-muted-foreground block mb-1">المستوى</label>
-                  <select value={level} onChange={e => setLevel(e.target.value)}
-                    className="w-full bg-secondary/50 border border-border/50 rounded-xl p-2.5 text-foreground text-right text-sm">
-                    <option value="ابتدائي">ابتدائي</option>
-                    <option value="متوسط">متوسط</option>
-                    <option value="ثانوي">ثانوي / بكالوريا</option>
-                    <option value="جامعي">جامعي</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground block mb-1">عدد الأسئلة</label>
-                  <Input type="number" value={count} onChange={e => setCount(parseInt(e.target.value) || 10)}
-                    min={3} max={30} className="bg-secondary/50 rounded-xl" />
-                </div>
+              {/* Toggle: Curriculum vs Manual */}
+              <div className="flex gap-2 rounded-xl overflow-hidden border border-border/50">
+                <button
+                  onClick={() => setUseManualTopic(false)}
+                  className={`flex-1 py-2.5 text-sm font-medium transition-colors ${!useManualTopic ? "bg-purple-600 text-white" : "bg-secondary/30 text-muted-foreground hover:text-foreground"}`}>
+                  📚 من المنهج الدراسي
+                </button>
+                <button
+                  onClick={() => setUseManualTopic(true)}
+                  className={`flex-1 py-2.5 text-sm font-medium transition-colors ${useManualTopic ? "bg-purple-600 text-white" : "bg-secondary/30 text-muted-foreground hover:text-foreground"}`}>
+                  ✏️ موضوع حر
+                </button>
               </div>
+
+              {useManualTopic ? (
+                <>
+                  <Input value={topic} onChange={e => setTopic(e.target.value)}
+                    placeholder="الموضوع (مثال: الحرب العالمية الأولى، الدوال العددية...)"
+                    className="bg-secondary/50 text-right rounded-xl h-12" />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-muted-foreground block mb-1">المستوى</label>
+                      <select value={level} onChange={e => setLevel(e.target.value)}
+                        className="w-full bg-secondary/50 border border-border/50 rounded-xl p-2.5 text-foreground text-right text-sm">
+                        <option value="ابتدائي">ابتدائي</option>
+                        <option value="متوسط">متوسط</option>
+                        <option value="ثانوي">ثانوي / بكالوريا</option>
+                        <option value="جامعي">جامعي</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground block mb-1">عدد الأسئلة</label>
+                      <Input type="number" value={count} onChange={e => setCount(parseInt(e.target.value) || 10)}
+                        min={3} max={30} className="bg-secondary/50 rounded-xl" />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Stage selector */}
+                  <div>
+                    <label className="text-xs text-muted-foreground block mb-1">المرحلة الدراسية</label>
+                    <select value={selectedStage}
+                      onChange={e => { setSelectedStage(e.target.value); setSelectedYear(""); setSelectedSubject(""); }}
+                      className="w-full bg-secondary/50 border border-border/50 rounded-xl p-2.5 text-foreground text-right text-sm">
+                      <option value="">-- اختر المرحلة --</option>
+                      {curriculum.map(s => (
+                        <option key={s.id} value={s.id}>{s.icon} {s.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Year selector */}
+                  {selectedStage && (
+                    <div>
+                      <label className="text-xs text-muted-foreground block mb-1">السنة الدراسية</label>
+                      <select value={selectedYear}
+                        onChange={e => { setSelectedYear(e.target.value); setSelectedSubject(""); }}
+                        className="w-full bg-secondary/50 border border-border/50 rounded-xl p-2.5 text-foreground text-right text-sm">
+                        <option value="">-- اختر السنة --</option>
+                        {curriculum.find(s => s.id === selectedStage)?.years.map(y => (
+                          <option key={y.id} value={y.id}>{y.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Subject selector */}
+                  {selectedYear && (
+                    <div>
+                      <label className="text-xs text-muted-foreground block mb-1">المادة</label>
+                      <select value={selectedSubject}
+                        onChange={e => setSelectedSubject(e.target.value)}
+                        className="w-full bg-secondary/50 border border-border/50 rounded-xl p-2.5 text-foreground text-right text-sm">
+                        <option value="">-- اختر المادة --</option>
+                        {curriculum.find(s => s.id === selectedStage)?.years.find(y => y.id === selectedYear)?.subjects.map(sub => (
+                          <option key={sub.id} value={sub.id}>{sub.icon} {sub.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Question count */}
+                  <div>
+                    <label className="text-xs text-muted-foreground block mb-1">عدد الأسئلة</label>
+                    <Input type="number" value={count} onChange={e => setCount(parseInt(e.target.value) || 10)}
+                      min={3} max={30} className="bg-secondary/50 rounded-xl" />
+                  </div>
+                </>
+              )}
 
               <div className="glass-card p-3 text-right text-xs text-muted-foreground space-y-1">
                 <p>📄 ورقة اختبار كاملة - جميع الأسئلة في صفحة واحدة</p>
