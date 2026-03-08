@@ -78,6 +78,8 @@ const Admin = () => {
   const [aiDiagnosis, setAiDiagnosis] = useState<AIDiagnosis | null>(null);
   const [diagnosing, setDiagnosing] = useState(false);
   const [applyingAction, setApplyingAction] = useState(false);
+  const [deletingUser, setDeletingUser] = useState<string | null>(null);
+  const [activationDates, setActivationDates] = useState<Record<string, { from: string; to: string }>>({});
 
   const fetchUsers = async () => {
     const { data } = await supabase.from("profiles").select("*");
