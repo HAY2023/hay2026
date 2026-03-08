@@ -72,6 +72,8 @@ const Index = () => {
   const [streak, setStreak] = useState(0);
   const [xp, setXP] = useState(0);
   const [level, setLevel] = useState(1);
+  const [activeDays, setActiveDays] = useState(0);
+  const [copied, setCopied] = useState(false);
 
   const todayQuote = motivationalQuotes[new Date().getDate() % motivationalQuotes.length];
   const todayTip = dailyTips[new Date().getDate() % dailyTips.length];
