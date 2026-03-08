@@ -196,6 +196,40 @@ const Admin = () => {
     return Math.ceil((new Date(expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
   };
 
+  const deleteUser = async (p: Profile) => {
+    if (!confirm(`هل تريد حذف المستخدم "${p.display_name || "بدون اسم"}" نهائياً؟ لا يمكن التراجع.`)) return;
+    setDeletingUser(p.id);
+    try {
+      const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/delete-user`;
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+        },
+        body: JSON.stringify({ user_id: p.user_id }),
+      });
+      if (!resp.ok) { const err = await resp.json(); throw new Error(err.error); }
+      toast.success("تم حذف المستخدم نهائياً");
+      fetchUsers();
+    } catch (e: any) { toast.error(e.message || "خطأ في حذف المستخدم"); }
+    setDeletingUser(null);
+  };
+
+  const setActivationRange = async (p: Profile) => {
+    const dates = activationDates[p.id];
+    if (!dates?.from || !dates?.to) { toast.error("حدد تاريخ البداية والنهاية"); return; }
+    const from = new Date(dates.from);
+    const to = new Date(dates.to);
+    if (to <= from) { toast.error("تاريخ النهاية يجب أن يكون بعد البداية"); return; }
+    await supabase.from("profiles").update({
+      is_activated: true,
+      activation_expires_at: to.toISOString(),
+    }).eq("id", p.id);
+    toast.success(`تم تفعيل الحساب من ${dates.from} إلى ${dates.to}`);
+    fetchUsers();
+  };
+
   // AI Diagnose for support ticket
   const diagnoseWithAI = async () => {
     if (!selectedTicket) return;
