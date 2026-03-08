@@ -16,6 +16,7 @@ import Support from "./pages/Support";
 import Settings from "./pages/Settings";
 import Curriculum from "./pages/Curriculum";
 import Library from "./pages/Library";
+import Store from "./pages/Store";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -40,6 +41,7 @@ const App = () => (
             <Route path="/settings" element={<Settings />} />
             <Route path="/curriculum" element={<Curriculum />} />
             <Route path="/library" element={<Library />} />
+            <Route path="/store" element={<Store />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

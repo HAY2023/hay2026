@@ -2,12 +2,13 @@ import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate, Navigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import { calculateGameXP, awardXP } from "@/hooks/useXP";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import StarsBackground from "@/components/StarsBackground";
 import MatchingQuestion from "@/components/MatchingQuestion";
-import { Heart, Timer, ArrowLeft, CheckCircle, XCircle, Sparkles, Loader2, Volume2, VolumeX } from "lucide-react";
+import { Heart, Timer, ArrowLeft, CheckCircle, XCircle, Sparkles, Loader2, Volume2, VolumeX, Zap } from "lucide-react";
 import { toast } from "sonner";
 import confetti from "canvas-confetti";
 import { motion, AnimatePresence } from "framer-motion";
@@ -75,6 +76,8 @@ const Play = () => {
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [earnedXP, setEarnedXP] = useState(0);
+  const [leveledUp, setLeveledUp] = useState(false);
 
   const speakQuestion = (text: string) => {
     if ('speechSynthesis' in window) {
@@ -162,6 +165,16 @@ const Play = () => {
       user_id: user.id, category_id: categoryId === "all" ? null : categoryId!,
       total_questions: questions.length, correct_answers: score, score_percentage: pct, time_taken: timeTaken,
     }).then(() => { });
+    // Award XP
+    const isPerfect = pct === 100;
+    const xpAmount = calculateGameXP(pct, questions.length, isPerfect, 0);
+    setEarnedXP(xpAmount);
+    awardXP(user.id, xpAmount).then(result => {
+      if (result.leveledUp) {
+        setLeveledUp(true);
+        confetti({ particleCount: 150, spread: 100, origin: { y: 0.5 }, colors: ["#D4AF37", "#FFD700", "#FFA500", "#9C27B0"] });
+      }
+    });
     setAnalyzing(true);
     const analyzeUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-results`;
     fetch(analyzeUrl, {
@@ -208,7 +221,20 @@ const Play = () => {
             className={`text-5xl font-heading font-bold my-4 ${pct >= 80 ? "text-green-400" : pct >= 50 ? "text-primary" : "text-destructive"}`}>
             {pct}%
           </motion.div>
-          <p className="text-muted-foreground mb-6">{score} من {questions.length} إجابة صحيحة</p>
+          <p className="text-muted-foreground mb-3">{score} من {questions.length} إجابة صحيحة</p>
+          {earnedXP > 0 && (
+            <motion.div initial={{ opacity: 0, scale: 0 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.5, type: "spring" }}
+              className="flex items-center justify-center gap-2 mb-2">
+              <span className="text-primary font-heading font-bold text-lg">+{earnedXP} XP</span>
+              <Zap className="w-5 h-5 text-primary" />
+            </motion.div>
+          )}
+          {leveledUp && (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8 }}
+              className="bg-primary/10 border border-primary/30 rounded-xl px-4 py-2 mb-4">
+              <p className="text-sm font-heading font-bold text-primary">🎉 ارتقيت لمستوى جديد!</p>
+            </motion.div>
+          )}
           {analyzing && (
             <div className="flex items-center justify-center gap-2 text-primary mb-4">
               <Loader2 className="w-4 h-4 animate-spin" />

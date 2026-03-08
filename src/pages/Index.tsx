@@ -7,11 +7,12 @@ import StarsBackground from "@/components/StarsBackground";
 import {
   Brain, LogOut, Settings, Sparkles, Trophy, PenTool, Zap, Heart,
   GraduationCap, HelpCircle, User, BookOpen, Flame, Target,
-  TrendingUp, Clock, Star, Award, ChevronLeft, BarChart3, Calendar
+  TrendingUp, Clock, Star, Award, ChevronLeft, BarChart3, Calendar, ShoppingBag
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import NotificationBell from "@/components/NotificationBell";
 import { Progress } from "@/components/ui/progress";
+import { getLevelFromXP, getXPForNextLevel, getXPForCurrentLevel, getLevelTitle, getLevelColor } from "@/hooks/useXP";
 
 interface Category {
   id: string;
@@ -69,6 +70,8 @@ const Index = () => {
   const [totalQuestions, setTotalQuestions] = useState(0);
   const [recentResults, setRecentResults] = useState<any[]>([]);
   const [streak, setStreak] = useState(0);
+  const [xp, setXP] = useState(0);
+  const [level, setLevel] = useState(1);
 
   const todayQuote = motivationalQuotes[new Date().getDate() % motivationalQuotes.length];
   const todayTip = dailyTips[new Date().getDate() % dailyTips.length];
@@ -115,10 +118,16 @@ const Index = () => {
   const fetchStats = async () => {
     if (!user) return;
     try {
-      const [resultsRes, questionsRes] = await Promise.all([
+      const [resultsRes, questionsRes, profileRes] = await Promise.all([
         supabase.from("game_results").select("*, categories(name)").eq("user_id", user.id).order("played_at", { ascending: false }).limit(50),
         supabase.from("questions").select("id").eq("created_by", user.id),
+        supabase.from("profiles").select("xp, level").eq("user_id", user.id).single(),
       ]);
+
+      if (profileRes.data) {
+        setXP((profileRes.data as any).xp ?? 0);
+        setLevel((profileRes.data as any).level ?? 1);
+      }
 
       const results = resultsRes.data || [];
       setTotalGames(results.length);
@@ -221,6 +230,39 @@ const Index = () => {
               <p className="text-xs text-muted-foreground font-body text-right flex-1 mr-3">{todayQuote}</p>
             </div>
           </motion.div>
+
+          {/* XP & Level Bar */}
+          {(() => {
+            const currentLevelXP = getXPForCurrentLevel(level);
+            const nextLevelXP = getXPForNextLevel(level);
+            const progressInLevel = nextLevelXP > currentLevelXP ? ((xp - currentLevelXP) / (nextLevelXP - currentLevelXP)) * 100 : 100;
+            return (
+              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }}
+                className="glass-card p-4 cursor-pointer" onClick={() => navigate("/store")}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <ShoppingBag className="w-4 h-4 text-primary" />
+                    <span className="text-xs text-primary font-heading font-bold">المتجر</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="text-right">
+                      <span className={`text-sm font-heading font-bold ${getLevelColor(level)}`}>
+                        Lv.{level} {getLevelTitle(level)}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1 bg-primary/10 border border-primary/20 px-2 py-1 rounded-lg">
+                      <Zap className="w-3.5 h-3.5 text-primary" />
+                      <span className="text-xs font-bold text-primary">{xp}</span>
+                    </div>
+                  </div>
+                </div>
+                <Progress value={progressInLevel} className="h-2 rounded-full" />
+                <p className="text-[10px] text-muted-foreground mt-1 text-center">
+                  {Math.round(nextLevelXP - xp)} XP للمستوى {level + 1}
+                </p>
+              </motion.div>
+            );
+          })()}
 
           {/* Quick Stats */}
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}

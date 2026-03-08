@@ -150,9 +150,11 @@ export type Database = {
           display_name: string | null
           id: string
           is_activated: boolean
+          level: number
           updated_at: string
           user_id: string
           version: string | null
+          xp: number
         }
         Insert: {
           activation_code?: string | null
@@ -161,9 +163,11 @@ export type Database = {
           display_name?: string | null
           id?: string
           is_activated?: boolean
+          level?: number
           updated_at?: string
           user_id: string
           version?: string | null
+          xp?: number
         }
         Update: {
           activation_code?: string | null
@@ -172,9 +176,11 @@ export type Database = {
           display_name?: string | null
           id?: string
           is_activated?: boolean
+          level?: number
           updated_at?: string
           user_id?: string
           version?: string | null
+          xp?: number
         }
         Relationships: []
       }
@@ -221,6 +227,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      store_items: {
+        Row: {
+          created_at: string
+          description: string
+          icon: string
+          id: string
+          is_active: boolean
+          item_type: string
+          name: string
+          price: number
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          icon?: string
+          id?: string
+          is_active?: boolean
+          item_type?: string
+          name: string
+          price?: number
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          icon?: string
+          id?: string
+          is_active?: boolean
+          item_type?: string
+          name?: string
+          price?: number
+        }
+        Relationships: []
       }
       support_messages: {
         Row: {
@@ -283,6 +322,38 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      user_purchases: {
+        Row: {
+          id: string
+          item_id: string
+          purchased_at: string
+          quantity: number
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          item_id: string
+          purchased_at?: string
+          quantity?: number
+          user_id: string
+        }
+        Update: {
+          id?: string
+          item_id?: string
+          purchased_at?: string
+          quantity?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_purchases_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "store_items"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
