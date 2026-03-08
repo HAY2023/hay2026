@@ -335,6 +335,11 @@ const Index = () => {
                   <Crown className="w-5 h-5 text-primary" /> المتصدرين
                 </Button>
               </motion.div>
+              <motion.div whileTap={{ scale: 0.97 }}>
+                <Button onClick={() => navigate("/achievements")} variant="outline" className="gap-2 h-14 text-sm font-heading w-full rounded-xl border-yellow-500/30">
+                  <Award className="w-5 h-5 text-yellow-400" /> الإنجازات
+                </Button>
+              </motion.div>
             </div>
 
             {version === "pro" && (
