@@ -6,14 +6,16 @@ import { ACHIEVEMENTS } from "@/data/achievements";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import StarsBackground from "@/components/StarsBackground";
+import AchievementToast from "@/components/AchievementToast";
 import { ArrowRight, Award, Lock, CheckCircle } from "lucide-react";
 import { motion } from "framer-motion";
 
 const Achievements = () => {
   const { user, isActivated, loading } = useAuth();
-  const { unlockedKeys, loading: achLoading, checkAndUnlock, unlockedCount, totalAchievements } = useAchievements(user?.id);
+  const { unlockedKeys, loading: achLoading, checkAndUnlock, newlyUnlocked, clearNewlyUnlocked, unlockedCount, totalAchievements } = useAchievements(user?.id);
   const navigate = useNavigate();
   const [checked, setChecked] = useState(false);
+  const [showToast, setShowToast] = useState(false);
 
   useEffect(() => {
     if (!user || achLoading || checked) return;
@@ -45,7 +47,7 @@ const Achievements = () => {
         }
       }
 
-      await checkAndUnlock({
+      const unlocked = await checkAndUnlock({
         totalGames: results.length,
         perfectGames,
         streak,
@@ -54,6 +56,7 @@ const Achievements = () => {
         purchases: (purchasesRes.data || []).length,
         fastestGame,
       });
+      if (unlocked && unlocked.length > 0) setShowToast(true);
       setChecked(true);
     };
     check();
@@ -71,6 +74,9 @@ const Achievements = () => {
 
   return (
     <div className="min-h-screen relative">
+      {showToast && newlyUnlocked.length > 0 && (
+        <AchievementToast achievementKeys={newlyUnlocked} onDone={() => { setShowToast(false); clearNewlyUnlocked(); }} />
+      )}
       <StarsBackground />
       <div className="relative z-10">
         <motion.header initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}
