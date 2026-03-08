@@ -165,6 +165,16 @@ const Play = () => {
       user_id: user.id, category_id: categoryId === "all" ? null : categoryId!,
       total_questions: questions.length, correct_answers: score, score_percentage: pct, time_taken: timeTaken,
     }).then(() => { });
+    // Award XP
+    const isPerfect = pct === 100;
+    const xpAmount = calculateGameXP(pct, questions.length, isPerfect, 0);
+    setEarnedXP(xpAmount);
+    awardXP(user.id, xpAmount).then(result => {
+      if (result.leveledUp) {
+        setLeveledUp(true);
+        confetti({ particleCount: 150, spread: 100, origin: { y: 0.5 }, colors: ["#D4AF37", "#FFD700", "#FFA500", "#9C27B0"] });
+      }
+    });
     setAnalyzing(true);
     const analyzeUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-results`;
     fetch(analyzeUrl, {
