@@ -380,7 +380,7 @@ const Admin = () => {
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 flex-wrap">
+                     <div className="flex items-center gap-2 flex-wrap">
                       <Button variant={u.is_activated ? "outline" : "default"} size="sm" onClick={() => toggleActivation(u)}
                         className={`rounded-xl text-xs ${u.is_activated ? "" : "gold-gradient text-background shadow-lg shadow-primary/15"}`}>
                         {u.is_activated ? <><X className="w-3.5 h-3.5 ml-1" /> تعطيل</> : <><Check className="w-3.5 h-3.5 ml-1" /> تفعيل</>}
@@ -393,13 +393,18 @@ const Admin = () => {
                       <Button variant="ghost" size="sm" onClick={() => setSelectedUser(selectedUser?.id === u.id ? null : u)} className="rounded-xl text-xs gap-1">
                         <Bell className="w-3 h-3" /> إشعار
                       </Button>
+                      <Button variant="ghost" size="sm" onClick={() => deleteUser(u)} disabled={deletingUser === u.id}
+                        className="rounded-xl text-xs gap-1 text-destructive hover:text-destructive hover:bg-destructive/10">
+                        {deletingUser === u.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />} حذف
+                      </Button>
                     </div>
                     <AnimatePresence>
                     {selectedUser?.id === u.id && (
-                      <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="mt-3 space-y-2 border-t border-border/30 pt-3">
+                      <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="mt-3 space-y-3 border-t border-border/30 pt-3">
+                        {/* Duration dropdown */}
                         <div className="flex items-center gap-2 flex-wrap">
                           <Clock className="w-3.5 h-3.5 text-primary" />
-                          <span className="text-xs text-muted-foreground">مدة تفعيل هذا المستخدم:</span>
+                          <span className="text-xs text-muted-foreground">مدة تفعيل سريعة:</span>
                           <select value={getUserDays(u.id)} onChange={e => setUserDays(u.id, parseInt(e.target.value))}
                             className="bg-secondary/50 border border-border/50 rounded-lg p-1 text-foreground text-xs">
                             <option value={7}>7 أيام</option>
@@ -411,6 +416,27 @@ const Admin = () => {
                             <option value={0}>دائم</option>
                           </select>
                         </div>
+                        {/* Date range activation */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Calendar className="w-3.5 h-3.5 text-primary" />
+                          <span className="text-xs text-muted-foreground">أو حدد المدة:</span>
+                        </div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <div className="flex-1 min-w-[120px]">
+                            <label className="text-[10px] text-muted-foreground block mb-0.5">من</label>
+                            <Input type="date" value={activationDates[u.id]?.from || ""} onChange={e => setActivationDates(prev => ({ ...prev, [u.id]: { ...prev[u.id], from: e.target.value, to: prev[u.id]?.to || "" } }))}
+                              className="bg-secondary/50 text-xs h-8 rounded-lg" />
+                          </div>
+                          <div className="flex-1 min-w-[120px]">
+                            <label className="text-[10px] text-muted-foreground block mb-0.5">إلى</label>
+                            <Input type="date" value={activationDates[u.id]?.to || ""} onChange={e => setActivationDates(prev => ({ ...prev, [u.id]: { from: prev[u.id]?.from || "", to: e.target.value } }))}
+                              className="bg-secondary/50 text-xs h-8 rounded-lg" />
+                          </div>
+                          <Button size="sm" onClick={() => setActivationRange(u)} className="rounded-xl text-xs gold-gradient text-background mt-4">
+                            <Check className="w-3 h-3 ml-1" /> تطبيق
+                          </Button>
+                        </div>
+                        {/* Notification */}
                         <Input id={`notif-title-${u.id}`} placeholder="عنوان الإشعار" className="bg-secondary/50 text-right rounded-xl text-xs h-9" />
                         <Input id={`notif-msg-${u.id}`} placeholder="نص الإشعار" className="bg-secondary/50 text-right rounded-xl text-xs h-9" />
                         <Button size="sm" onClick={async () => {
