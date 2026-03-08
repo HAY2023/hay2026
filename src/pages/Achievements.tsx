@@ -6,6 +6,7 @@ import { ACHIEVEMENTS } from "@/data/achievements";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import StarsBackground from "@/components/StarsBackground";
+import AchievementToast from "@/components/AchievementToast";
 import { ArrowRight, Award, Lock, CheckCircle } from "lucide-react";
 import { motion } from "framer-motion";
 
