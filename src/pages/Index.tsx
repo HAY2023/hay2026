@@ -231,6 +231,39 @@ const Index = () => {
             </div>
           </motion.div>
 
+          {/* XP & Level Bar */}
+          {(() => {
+            const currentLevelXP = getXPForCurrentLevel(level);
+            const nextLevelXP = getXPForNextLevel(level);
+            const progressInLevel = nextLevelXP > currentLevelXP ? ((xp - currentLevelXP) / (nextLevelXP - currentLevelXP)) * 100 : 100;
+            return (
+              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }}
+                className="glass-card p-4 cursor-pointer" onClick={() => navigate("/store")}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <ShoppingBag className="w-4 h-4 text-primary" />
+                    <span className="text-xs text-primary font-heading font-bold">المتجر</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="text-right">
+                      <span className={`text-sm font-heading font-bold ${getLevelColor(level)}`}>
+                        Lv.{level} {getLevelTitle(level)}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1 bg-primary/10 border border-primary/20 px-2 py-1 rounded-lg">
+                      <Zap className="w-3.5 h-3.5 text-primary" />
+                      <span className="text-xs font-bold text-primary">{xp}</span>
+                    </div>
+                  </div>
+                </div>
+                <Progress value={progressInLevel} className="h-2 rounded-full" />
+                <p className="text-[10px] text-muted-foreground mt-1 text-center">
+                  {Math.round(nextLevelXP - xp)} XP للمستوى {level + 1}
+                </p>
+              </motion.div>
+            );
+          })()}
+
           {/* Quick Stats */}
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
             className="grid grid-cols-4 gap-2">
