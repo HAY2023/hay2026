@@ -10,6 +10,7 @@ import {
   CheckCircle, XCircle, BookOpen, Send, Brain, Printer, RotateCcw
 } from "lucide-react";
 import { motion } from "framer-motion";
+import { curriculum } from "@/data/curriculum";
 
 interface ExamQuestion {
   question_text: string;
@@ -33,6 +34,10 @@ const ProExam = () => {
   const [correcting, setCorrecting] = useState(false);
   const [examStarted, setExamStarted] = useState(false);
   const examRef = useRef<HTMLDivElement>(null);
+  const [useManualTopic, setUseManualTopic] = useState(false);
+  const [selectedStage, setSelectedStage] = useState("");
+  const [selectedYear, setSelectedYear] = useState("");
+  const [selectedSubject, setSelectedSubject] = useState("");
 
   if (loading) return null;
   if (!user) return <Navigate to="/auth" replace />;
