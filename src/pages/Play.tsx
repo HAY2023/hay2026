@@ -89,6 +89,7 @@ const Play = () => {
   const [hintText, setHintText] = useState<string | null>(null);
   const [retryUsed, setRetryUsed] = useState(false);
   const [xpMultiplier, setXpMultiplier] = useState(1);
+  const [showAchievementToast, setShowAchievementToast] = useState(false);
 
   // Check for XP multiplier at start
   useEffect(() => {
