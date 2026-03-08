@@ -176,11 +176,31 @@ const Index = () => {
   const greeting = greetingHour < 12 ? "صباح الخير" : greetingHour < 18 ? "مساء الخير" : "مساء النور";
 
   const stats: QuickStat[] = [
+    { label: "أيام النشاط", value: activeDays, icon: <Calendar className="w-4 h-4" />, color: "text-purple-400" },
     { label: "الألعاب", value: totalGames, icon: <Target className="w-4 h-4" />, color: "text-primary" },
     { label: "المعدل", value: `${avgScore}%`, icon: <TrendingUp className="w-4 h-4" />, color: "text-green-400" },
     { label: "أفضل نتيجة", value: `${bestScore}%`, icon: <Star className="w-4 h-4" />, color: "text-yellow-400" },
-    { label: "أسئلتي", value: totalQuestions, icon: <BarChart3 className="w-4 h-4" />, color: "text-blue-400" },
   ];
+
+  const siteUrl = "https://hay2026.lovable.app";
+  const shareText = `🧠 أنا ألعب Quiz AI منذ ${activeDays} يوم! معدلي ${avgScore}% ومستواي ${level}. جرّب أنت أيضاً!`;
+
+  const handleShare = (platform: string) => {
+    const encoded = encodeURIComponent(shareText);
+    const encodedUrl = encodeURIComponent(siteUrl);
+    let url = "";
+    if (platform === "whatsapp") url = `https://wa.me/?text=${encoded}%20${encodedUrl}`;
+    else if (platform === "facebook") url = `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}&quote=${encoded}`;
+    else if (platform === "twitter") url = `https://twitter.com/intent/tweet?text=${encoded}&url=${encodedUrl}`;
+    else if (platform === "telegram") url = `https://t.me/share/url?url=${encodedUrl}&text=${encoded}`;
+    window.open(url, "_blank");
+  };
+
+  const copyInviteLink = () => {
+    navigator.clipboard.writeText(`${shareText}\n${siteUrl}`);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
     <div className="min-h-screen relative">
