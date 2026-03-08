@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.ai-support-diagnose]
 verify_jwt = false
+
+[functions.generate-book-summary]
+verify_jwt = false
