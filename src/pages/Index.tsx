@@ -63,7 +63,7 @@ const Index = () => {
   const { user, isActivated, isAdmin, loading, signOut, profile } = useAuth();
   const navigate = useNavigate();
   const [categories, setCategories] = useState<Category[]>([]);
-  const [livesCount, setLivesCount] = useState(3);
+  const [livesCount, setLivesCount] = useState(5);
   const [totalGames, setTotalGames] = useState(0);
   const [avgScore, setAvgScore] = useState(0);
   const [bestScore, setBestScore] = useState(0);
