@@ -221,7 +221,20 @@ const Play = () => {
             className={`text-5xl font-heading font-bold my-4 ${pct >= 80 ? "text-green-400" : pct >= 50 ? "text-primary" : "text-destructive"}`}>
             {pct}%
           </motion.div>
-          <p className="text-muted-foreground mb-6">{score} من {questions.length} إجابة صحيحة</p>
+          <p className="text-muted-foreground mb-3">{score} من {questions.length} إجابة صحيحة</p>
+          {earnedXP > 0 && (
+            <motion.div initial={{ opacity: 0, scale: 0 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.5, type: "spring" }}
+              className="flex items-center justify-center gap-2 mb-2">
+              <span className="text-primary font-heading font-bold text-lg">+{earnedXP} XP</span>
+              <Zap className="w-5 h-5 text-primary" />
+            </motion.div>
+          )}
+          {leveledUp && (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.8 }}
+              className="bg-primary/10 border border-primary/30 rounded-xl px-4 py-2 mb-4">
+              <p className="text-sm font-heading font-bold text-primary">🎉 ارتقيت لمستوى جديد!</p>
+            </motion.div>
+          )}
           {analyzing && (
             <div className="flex items-center justify-center gap-2 text-primary mb-4">
               <Loader2 className="w-4 h-4 animate-spin" />
