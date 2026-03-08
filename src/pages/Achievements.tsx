@@ -74,6 +74,9 @@ const Achievements = () => {
 
   return (
     <div className="min-h-screen relative">
+      {showToast && newlyUnlocked.length > 0 && (
+        <AchievementToast achievementKeys={newlyUnlocked} onDone={() => { setShowToast(false); clearNewlyUnlocked(); }} />
+      )}
       <StarsBackground />
       <div className="relative z-10">
         <motion.header initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}
