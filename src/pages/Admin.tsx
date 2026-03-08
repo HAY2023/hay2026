@@ -10,7 +10,7 @@ import { toast } from "sonner";
 import {
   ArrowRight, Check, X, Users, Shield, KeyRound, Copy, Plus,
   Settings, Bell, MessageCircle, Clock, Crown, Bot, Loader2,
-  CheckCircle, XCircle, ArrowUpCircle
+  CheckCircle, XCircle, ArrowUpCircle, Trash2, Calendar
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
