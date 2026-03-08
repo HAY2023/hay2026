@@ -45,6 +45,7 @@ const App = () => (
             <Route path="/library" element={<Library />} />
             <Route path="/store" element={<Store />} />
             <Route path="/leaderboard" element={<Leaderboard />} />
+            <Route path="/achievements" element={<Achievements />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

@@ -3,12 +3,13 @@ import { useParams, useNavigate, Navigate, useSearchParams } from "react-router-
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { calculateGameXP, awardXP } from "@/hooks/useXP";
+import { useInventory } from "@/hooks/useInventory";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import StarsBackground from "@/components/StarsBackground";
 import MatchingQuestion from "@/components/MatchingQuestion";
-import { Heart, Timer, ArrowLeft, CheckCircle, XCircle, Sparkles, Loader2, Volume2, VolumeX, Zap } from "lucide-react";
+import { Heart, Timer, ArrowLeft, CheckCircle, XCircle, Sparkles, Loader2, Volume2, VolumeX, Zap, Lightbulb, Clock, Shield, RotateCcw, Snowflake } from "lucide-react";
 import { toast } from "sonner";
 import confetti from "canvas-confetti";
 import { motion, AnimatePresence } from "framer-motion";
@@ -62,6 +63,8 @@ const Play = () => {
   const navigate = useNavigate();
   const { user, isActivated, loading } = useAuth();
   const initialLives = parseInt(searchParams.get("lives") || "3", 10);
+  const { consumeItem, getCount } = useInventory(user?.id);
+
   const [questions, setQuestions] = useState<Question[]>([]);
   const [current, setCurrent] = useState(0);
   const [lives, setLives] = useState(initialLives);
@@ -78,13 +81,30 @@ const Play = () => {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [earnedXP, setEarnedXP] = useState(0);
   const [leveledUp, setLeveledUp] = useState(false);
+  const [timeFrozen, setTimeFrozen] = useState(false);
+  const [shieldActive, setShieldActive] = useState(false);
+  const [hintUsed, setHintUsed] = useState(false);
+  const [hintText, setHintText] = useState<string | null>(null);
+  const [retryUsed, setRetryUsed] = useState(false);
+  const [xpMultiplier, setXpMultiplier] = useState(1);
+
+  // Check for XP multiplier at start
+  useEffect(() => {
+    if (user) {
+      const count = getCount("xp_multiplier");
+      if (count > 0) {
+        consumeItem("xp_multiplier").then(ok => {
+          if (ok) { setXpMultiplier(2); toast.success("مضاعف XP مفعّل! ⚡×2"); }
+        });
+      }
+    }
+  }, [user]);
 
   const speakQuestion = (text: string) => {
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'ar';
-      utterance.rate = 0.9;
+      utterance.lang = 'ar'; utterance.rate = 0.9;
       utterance.onstart = () => setIsSpeaking(true);
       utterance.onend = () => setIsSpeaking(false);
       utterance.onerror = () => setIsSpeaking(false);
@@ -92,10 +112,7 @@ const Play = () => {
     }
   };
 
-  const stopSpeaking = () => {
-    window.speechSynthesis.cancel();
-    setIsSpeaking(false);
-  };
+  const stopSpeaking = () => { window.speechSynthesis.cancel(); setIsSpeaking(false); };
 
   useEffect(() => {
     if (!user || !isActivated) return;
@@ -114,13 +131,22 @@ const Play = () => {
   }, [user, isActivated, categoryId]);
 
   useEffect(() => {
-    if (gameOver || showResult || fetchLoading || questions.length === 0) return;
+    if (gameOver || showResult || fetchLoading || questions.length === 0 || timeFrozen) return;
     if (timeLeft <= 0) { handleWrong(); return; }
     const t = setTimeout(() => setTimeLeft((p) => p - 1), 1000);
     return () => clearTimeout(t);
-  }, [timeLeft, gameOver, showResult, fetchLoading, questions.length]);
+  }, [timeLeft, gameOver, showResult, fetchLoading, questions.length, timeFrozen]);
 
   const handleWrong = useCallback(() => {
+    // Shield protection
+    if (shieldActive) {
+      setShieldActive(false);
+      toast.success("🛡️ درع الحماية أنقذك!");
+      setShowResult("wrong");
+      setTimeout(() => nextQuestion(), 1200);
+      return;
+    }
+
     setShake(true); playSound("wrong");
     setTimeout(() => setShake(false), 500);
     setShowResult("wrong");
@@ -131,7 +157,7 @@ const Play = () => {
     } else {
       setTimeout(() => nextQuestion(), 1500);
     }
-  }, [lives, current, questions.length]);
+  }, [lives, current, questions.length, shieldActive]);
 
   const handleCorrect = useCallback(() => {
     setShowResult("correct"); setScore((p) => p + 1); playSound("correct");
@@ -139,7 +165,7 @@ const Play = () => {
   }, [current, questions.length]);
 
   const nextQuestion = () => {
-    setShowResult(null); setAnswer("");
+    setShowResult(null); setAnswer(""); setHintUsed(false); setHintText(null); setRetryUsed(false);
     if (current + 1 >= questions.length) { setGameOver(true); }
     else { setCurrent((p) => p + 1); setTimeLeft(questions[current + 1]?.time_limit ?? 30); }
   };
@@ -147,13 +173,65 @@ const Play = () => {
   const handleAnswer = (ans: string) => {
     if (showResult) return;
     const correct = questions[current].correct_answer.trim().toLowerCase();
-    if (ans.trim().toLowerCase() === correct) {
-      handleCorrect();
-    } else { handleWrong(); }
+    if (ans.trim().toLowerCase() === correct) { handleCorrect(); } else { handleWrong(); }
   };
 
   const handleMatchingComplete = (isCorrect: boolean) => {
     if (isCorrect) { handleCorrect(); } else { handleWrong(); }
+  };
+
+  // Power-up handlers
+  const useHint = async () => {
+    if (hintUsed || showResult) return;
+    const ok = await consumeItem("hint");
+    if (!ok) { toast.error("ليس لديك تلميحات! اشترِ من المتجر 💡"); return; }
+    setHintUsed(true);
+    const q = questions[current];
+    if (q.question_type === "multiple_choice" && q.options) {
+      // Show hint: reveal first letter of correct answer
+      const correct = q.correct_answer;
+      setHintText(`التلميح: الإجابة تبدأ بـ "${correct.charAt(0)}..." 💡`);
+    } else {
+      setHintText(`التلميح: الإجابة تتكون من ${q.correct_answer.length} أحرف 💡`);
+    }
+    toast.success("تم استخدام تلميح! 💡");
+  };
+
+  const useExtraTime = async () => {
+    if (showResult) return;
+    const ok = await consumeItem("extra_time");
+    if (!ok) { toast.error("ليس لديك وقت إضافي! ⏰"); return; }
+    setTimeLeft(prev => prev + 15);
+    toast.success("+15 ثانية إضافية! ⏰");
+  };
+
+  const useFreezeTime = async () => {
+    if (showResult || timeFrozen) return;
+    const ok = await consumeItem("freeze_time");
+    if (!ok) { toast.error("ليس لديك تجميد وقت! ❄️"); return; }
+    setTimeFrozen(true);
+    toast.success("تم تجميد الوقت لـ 10 ثوانٍ! ❄️");
+    setTimeout(() => setTimeFrozen(false), 10000);
+  };
+
+  const useShield = async () => {
+    if (showResult || shieldActive) return;
+    const ok = await consumeItem("shield");
+    if (!ok) { toast.error("ليس لديك درع! 🛡️"); return; }
+    setShieldActive(true);
+    toast.success("درع الحماية مفعّل! 🛡️");
+  };
+
+  const useRetry = async () => {
+    if (!showResult || showResult !== "wrong" || retryUsed) return;
+    const ok = await consumeItem("retry");
+    if (!ok) { toast.error("ليس لديك إعادة محاولة! 🔄"); return; }
+    setRetryUsed(true);
+    setShowResult(null);
+    setAnswer("");
+    setLives(prev => prev + 1); // Restore the lost life
+    setTimeLeft(questions[current]?.time_limit ?? 30);
+    toast.success("إعادة المحاولة! 🔄");
   };
 
   useEffect(() => {
@@ -165,9 +243,9 @@ const Play = () => {
       user_id: user.id, category_id: categoryId === "all" ? null : categoryId!,
       total_questions: questions.length, correct_answers: score, score_percentage: pct, time_taken: timeTaken,
     }).then(() => { });
-    // Award XP
     const isPerfect = pct === 100;
-    const xpAmount = calculateGameXP(pct, questions.length, isPerfect, 0);
+    let xpAmount = calculateGameXP(pct, questions.length, isPerfect, 0);
+    xpAmount *= xpMultiplier;
     setEarnedXP(xpAmount);
     awardXP(user.id, xpAmount).then(result => {
       if (result.leveledUp) {
@@ -225,7 +303,7 @@ const Play = () => {
           {earnedXP > 0 && (
             <motion.div initial={{ opacity: 0, scale: 0 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.5, type: "spring" }}
               className="flex items-center justify-center gap-2 mb-2">
-              <span className="text-primary font-heading font-bold text-lg">+{earnedXP} XP</span>
+              <span className="text-primary font-heading font-bold text-lg">+{earnedXP} XP {xpMultiplier > 1 ? "(×2!)" : ""}</span>
               <Zap className="w-5 h-5 text-primary" />
             </motion.div>
           )}
@@ -264,7 +342,6 @@ const Play = () => {
   const q = questions[current];
   const progress = ((current + 1) / questions.length) * 100;
 
-  // Parse matching data
   let matchingPairs: Record<string, string> = {};
   let matchingLeft: string[] = [];
   let matchingRight: string[] = [];
@@ -281,7 +358,7 @@ const Play = () => {
       <StarsBackground />
       <div className="relative z-10 max-w-2xl mx-auto p-4">
         {/* Top bar */}
-        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between mb-6">
+        <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center justify-between mb-4">
           <button onClick={() => navigate("/")} className="text-muted-foreground hover:text-foreground transition-colors">
             <ArrowLeft className="w-6 h-6" />
           </button>
@@ -298,18 +375,44 @@ const Play = () => {
           </div>
           <div className="flex items-center gap-2 font-heading">
             <span className="text-sm font-bold text-green-400">{score}/{questions.length}</span>
+            {timeFrozen && <Snowflake className="w-4 h-4 text-blue-400 animate-pulse" />}
+            {shieldActive && <Shield className="w-4 h-4 text-primary animate-pulse" />}
             <Timer className="w-5 h-5 text-primary" />
-            <span className={`text-xl font-bold ${timeLeft <= 5 ? "text-destructive animate-pulse" : "text-primary"}`}>{timeLeft}</span>
+            <span className={`text-xl font-bold ${timeLeft <= 5 ? "text-destructive animate-pulse" : timeFrozen ? "text-blue-400" : "text-primary"}`}>{timeLeft}</span>
           </div>
         </motion.div>
 
-        <Progress value={progress} className="h-2 mb-4 rounded-full" />
-        <p className="text-center text-sm text-muted-foreground mb-6">السؤال {current + 1} من {questions.length}</p>
+        <Progress value={progress} className="h-2 mb-2 rounded-full" />
+        <p className="text-center text-sm text-muted-foreground mb-4">السؤال {current + 1} من {questions.length}</p>
+
+        {/* Power-ups bar */}
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center justify-center gap-2 mb-4 flex-wrap">
+          <button onClick={useHint} disabled={hintUsed || !!showResult}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs border border-border/50 bg-secondary/50 hover:bg-primary/10 hover:border-primary/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+            <Lightbulb className="w-3.5 h-3.5 text-yellow-400" />
+            <span>تلميح ({getCount("hint")})</span>
+          </button>
+          <button onClick={useExtraTime} disabled={!!showResult}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs border border-border/50 bg-secondary/50 hover:bg-primary/10 hover:border-primary/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+            <Clock className="w-3.5 h-3.5 text-green-400" />
+            <span>+15 ث ({getCount("extra_time")})</span>
+          </button>
+          <button onClick={useFreezeTime} disabled={!!showResult || timeFrozen}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs border border-border/50 bg-secondary/50 hover:bg-primary/10 hover:border-primary/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+            <Snowflake className="w-3.5 h-3.5 text-blue-400" />
+            <span>تجميد ({getCount("freeze_time")})</span>
+          </button>
+          <button onClick={useShield} disabled={!!showResult || shieldActive}
+            className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs border border-border/50 bg-secondary/50 hover:bg-primary/10 hover:border-primary/30 transition-all disabled:opacity-40 disabled:cursor-not-allowed">
+            <Shield className="w-3.5 h-3.5 text-primary" />
+            <span>درع ({getCount("shield")})</span>
+          </button>
+        </motion.div>
 
         {/* Question card */}
         <AnimatePresence mode="wait">
           <motion.div key={current} initial={{ opacity: 0, x: 50 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -50 }}
-            className={`glass-card p-6 md:p-8 mb-6 ${shake ? "animate-shake" : ""}`}>
+            className={`glass-card p-6 md:p-8 mb-4 ${shake ? "animate-shake" : ""}`}>
             <h2 className="text-xl md:text-2xl font-heading font-bold text-center text-foreground leading-relaxed mb-4">
               {q.question_text}
             </h2>
@@ -320,11 +423,26 @@ const Play = () => {
               {isSpeaking ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
               <span>{isSpeaking ? "إيقاف" : "اقرأ السؤال"}</span>
             </button>
+            {hintText && (
+              <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}
+                className="mt-3 text-center text-sm text-yellow-400 bg-yellow-400/10 border border-yellow-400/20 rounded-xl px-3 py-2">
+                {hintText}
+              </motion.div>
+            )}
             {showResult && (
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                className={`mt-4 flex items-center justify-center gap-2 ${showResult === "correct" ? "text-green-400" : "text-destructive"}`}>
-                {showResult === "correct" ? <CheckCircle className="w-5 h-5" /> : <XCircle className="w-5 h-5" /> }
-                <span className="font-body">{showResult === "correct" ? "إجابة صحيحة!" : "خطأ!"}</span>
+                className={`mt-4 flex flex-col items-center gap-2 ${showResult === "correct" ? "text-green-400" : "text-destructive"}`}>
+                <div className="flex items-center gap-2">
+                  {showResult === "correct" ? <CheckCircle className="w-5 h-5" /> : <XCircle className="w-5 h-5" />}
+                  <span className="font-body">{showResult === "correct" ? "إجابة صحيحة!" : "خطأ!"}</span>
+                </div>
+                {showResult === "wrong" && !retryUsed && getCount("retry") > 0 && (
+                  <button onClick={useRetry}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs border border-primary/30 bg-primary/10 hover:bg-primary/20 transition-all text-primary">
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>إعادة المحاولة ({getCount("retry")})</span>
+                  </button>
+                )}
               </motion.div>
             )}
           </motion.div>
@@ -332,13 +450,8 @@ const Play = () => {
 
         {/* Answer area */}
         {q.question_type === "matching" ? (
-          <MatchingQuestion
-            leftItems={matchingLeft}
-            rightItems={matchingRight}
-            correctPairs={matchingPairs}
-            onComplete={handleMatchingComplete}
-            disabled={!!showResult}
-          />
+          <MatchingQuestion leftItems={matchingLeft} rightItems={matchingRight} correctPairs={matchingPairs}
+            onComplete={handleMatchingComplete} disabled={!!showResult} />
         ) : q.question_type === "multiple_choice" && q.options ? (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }} className="grid grid-cols-1 gap-3">
             {(q.options as string[]).map((opt, i) => (
