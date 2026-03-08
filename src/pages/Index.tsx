@@ -118,10 +118,16 @@ const Index = () => {
   const fetchStats = async () => {
     if (!user) return;
     try {
-      const [resultsRes, questionsRes] = await Promise.all([
+      const [resultsRes, questionsRes, profileRes] = await Promise.all([
         supabase.from("game_results").select("*, categories(name)").eq("user_id", user.id).order("played_at", { ascending: false }).limit(50),
         supabase.from("questions").select("id").eq("created_by", user.id),
+        supabase.from("profiles").select("xp, level").eq("user_id", user.id).single(),
       ]);
+
+      if (profileRes.data) {
+        setXP((profileRes.data as any).xp ?? 0);
+        setLevel((profileRes.data as any).level ?? 1);
+      }
 
       const results = resultsRes.data || [];
       setTotalGames(results.length);
