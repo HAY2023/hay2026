@@ -318,8 +318,11 @@ const Play = () => {
 
   if (gameOver) {
     const pct = Math.round((score / questions.length) * 100);
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4 relative">
+      <>
+        {showAchievementToast && newlyUnlocked.length > 0 && (
+          <AchievementToast achievementKeys={newlyUnlocked} onDone={() => { setShowAchievementToast(false); clearNewlyUnlocked(); }} />
+        )}
+        <div className="min-h-screen flex items-center justify-center p-4 relative">
         <StarsBackground />
         <motion.div initial={{ opacity: 0, y: 30, scale: 0.9 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ type: "spring", stiffness: 200 }}
           className="glass-card p-8 text-center z-10 max-w-md w-full overflow-hidden">
