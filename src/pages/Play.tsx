@@ -256,6 +256,36 @@ const Play = () => {
         confetti({ particleCount: 150, spread: 100, origin: { y: 0.5 }, colors: ["#D4AF37", "#FFD700", "#FFA500", "#9C27B0"] });
       }
     });
+    // Check achievements after game
+    const checkAch = async () => {
+      const [allResultsRes, purchasesRes, profileRes2] = await Promise.all([
+        supabase.from("game_results").select("score_percentage, time_taken, played_at").eq("user_id", user.id),
+        supabase.from("user_purchases").select("id").eq("user_id", user.id),
+        supabase.from("profiles").select("xp, level").eq("user_id", user.id).single(),
+      ]);
+      const allResults = allResultsRes.data || [];
+      const perfectGames = allResults.filter(r => r.score_percentage === 100).length;
+      const fastestGame = allResults.reduce((min: number | null, r) => {
+        if (r.time_taken == null) return min;
+        return min === null ? r.time_taken : Math.min(min, r.time_taken);
+      }, null as number | null);
+      let streak = 0;
+      const today = new Date();
+      for (let i = 0; i < 60; i++) {
+        const d = new Date(today); d.setDate(today.getDate() - i);
+        const ds = d.toISOString().split("T")[0];
+        const played = allResults.some(r => r.played_at.startsWith(ds));
+        if (played || i === 0) { if (played) streak++; } else break;
+      }
+      const unlocked = await checkAndUnlock({
+        totalGames: allResults.length, perfectGames, streak,
+        level: (profileRes2.data as any)?.level ?? 1,
+        xp: (profileRes2.data as any)?.xp ?? 0,
+        purchases: (purchasesRes.data || []).length, fastestGame,
+      });
+      if (unlocked && unlocked.length > 0) setShowAchievementToast(true);
+    };
+    checkAch();
     setAnalyzing(true);
     const analyzeUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/analyze-results`;
     fetch(analyzeUrl, {
