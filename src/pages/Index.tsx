@@ -470,6 +470,35 @@ const Index = () => {
             )}
           </motion.div>
 
+          {/* Share & Invite */}
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}
+            className="glass-card p-4">
+            <h3 className="text-sm font-heading font-bold text-foreground mb-3 flex items-center gap-2 justify-end">
+              شارك وادعُ أصدقاءك <Share2 className="w-4 h-4 text-primary" />
+            </h3>
+            <div className="flex items-center gap-2 justify-center mb-3">
+              {[
+                { platform: "whatsapp", icon: "💬", label: "واتساب", bg: "bg-green-500/10 hover:bg-green-500/20 border-green-500/20" },
+                { platform: "facebook", icon: "📘", label: "فيسبوك", bg: "bg-blue-500/10 hover:bg-blue-500/20 border-blue-500/20" },
+                { platform: "twitter", icon: "🐦", label: "تويتر", bg: "bg-sky-500/10 hover:bg-sky-500/20 border-sky-500/20" },
+                { platform: "telegram", icon: "✈️", label: "تيليجرام", bg: "bg-blue-400/10 hover:bg-blue-400/20 border-blue-400/20" },
+              ].map(s => (
+                <motion.button key={s.platform} whileTap={{ scale: 0.9 }}
+                  onClick={() => handleShare(s.platform)}
+                  className={`flex flex-col items-center gap-1 px-3 py-2 rounded-xl border transition-colors ${s.bg}`}>
+                  <span className="text-xl">{s.icon}</span>
+                  <span className="text-[10px] text-muted-foreground">{s.label}</span>
+                </motion.button>
+              ))}
+            </div>
+            <motion.div whileTap={{ scale: 0.97 }}>
+              <Button onClick={copyInviteLink} variant="outline" className="w-full rounded-xl gap-2 text-sm">
+                {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
+                {copied ? "تم النسخ!" : "نسخ رابط الدعوة"}
+              </Button>
+            </motion.div>
+          </motion.div>
+
           {/* Footer Navigation */}
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.5 }}
             className="flex gap-2">
