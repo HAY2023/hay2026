@@ -66,7 +66,7 @@ const Play = () => {
   const { user, isActivated, loading } = useAuth();
   const initialLives = parseInt(searchParams.get("lives") || "3", 10);
   const { consumeItem, getCount } = useInventory(user?.id);
-
+  const { checkAndUnlock, newlyUnlocked, clearNewlyUnlocked } = useAchievements(user?.id);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [current, setCurrent] = useState(0);
   const [lives, setLives] = useState(initialLives);
