@@ -12,9 +12,10 @@ import { motion } from "framer-motion";
 
 const Achievements = () => {
   const { user, isActivated, loading } = useAuth();
-  const { unlockedKeys, loading: achLoading, checkAndUnlock, unlockedCount, totalAchievements } = useAchievements(user?.id);
+  const { unlockedKeys, loading: achLoading, checkAndUnlock, newlyUnlocked, clearNewlyUnlocked, unlockedCount, totalAchievements } = useAchievements(user?.id);
   const navigate = useNavigate();
   const [checked, setChecked] = useState(false);
+  const [showToast, setShowToast] = useState(false);
 
   useEffect(() => {
     if (!user || achLoading || checked) return;
