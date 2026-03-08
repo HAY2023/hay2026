@@ -7,7 +7,7 @@ import StarsBackground from "@/components/StarsBackground";
 import {
   Brain, LogOut, Settings, Sparkles, Trophy, PenTool, Zap, Heart,
   GraduationCap, HelpCircle, User, BookOpen, Flame, Target,
-  TrendingUp, Clock, Star, Award, ChevronLeft, BarChart3, Calendar, ShoppingBag
+  TrendingUp, Clock, Star, Award, ChevronLeft, BarChart3, Calendar, ShoppingBag, Crown
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import NotificationBell from "@/components/NotificationBell";
@@ -293,15 +293,20 @@ const Index = () => {
           {/* Main Action Buttons */}
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}
             className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
               <motion.div whileTap={{ scale: 0.97 }}>
-                <Button onClick={() => navigate("/dashboard")} className="gold-gradient text-background gap-2 h-14 text-base font-heading w-full rounded-xl shadow-lg shadow-primary/15">
-                  <PenTool className="w-5 h-5" /> إدارة أسئلتي
+                <Button onClick={() => navigate("/dashboard")} className="gold-gradient text-background gap-2 h-14 text-sm font-heading w-full rounded-xl shadow-lg shadow-primary/15">
+                  <PenTool className="w-5 h-5" /> أسئلتي
                 </Button>
               </motion.div>
               <motion.div whileTap={{ scale: 0.97 }}>
-                <Button onClick={() => navigate("/results")} variant="outline" className="gap-2 h-14 text-base font-heading w-full rounded-xl">
+                <Button onClick={() => navigate("/results")} variant="outline" className="gap-2 h-14 text-sm font-heading w-full rounded-xl">
                   <Trophy className="w-5 h-5" /> نتائجي
+                </Button>
+              </motion.div>
+              <motion.div whileTap={{ scale: 0.97 }}>
+                <Button onClick={() => navigate("/leaderboard")} variant="outline" className="gap-2 h-14 text-sm font-heading w-full rounded-xl border-primary/30">
+                  <Crown className="w-5 h-5 text-primary" /> المتصدرين
                 </Button>
               </motion.div>
             </div>
