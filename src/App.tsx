@@ -16,6 +16,7 @@ import Support from "./pages/Support";
 import Settings from "./pages/Settings";
 import Curriculum from "./pages/Curriculum";
 import Library from "./pages/Library";
+import Store from "./pages/Store";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
