@@ -76,6 +76,8 @@ const Play = () => {
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [earnedXP, setEarnedXP] = useState(0);
+  const [leveledUp, setLeveledUp] = useState(false);
 
   const speakQuestion = (text: string) => {
     if ('speechSynthesis' in window) {
