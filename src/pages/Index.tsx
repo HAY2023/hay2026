@@ -319,7 +319,7 @@ const Index = () => {
           {/* Main Action Buttons */}
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}
             className="space-y-3">
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <motion.div whileTap={{ scale: 0.97 }}>
                 <Button onClick={() => navigate("/dashboard")} className="gold-gradient text-background gap-2 h-14 text-sm font-heading w-full rounded-xl shadow-lg shadow-primary/15">
                   <PenTool className="w-5 h-5" /> أسئلتي
