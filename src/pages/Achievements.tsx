@@ -47,7 +47,7 @@ const Achievements = () => {
         }
       }
 
-      await checkAndUnlock({
+      const unlocked = await checkAndUnlock({
         totalGames: results.length,
         perfectGames,
         streak,
