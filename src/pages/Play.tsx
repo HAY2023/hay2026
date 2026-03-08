@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import StarsBackground from "@/components/StarsBackground";
 import MatchingQuestion from "@/components/MatchingQuestion";
-import { Heart, Timer, ArrowLeft, CheckCircle, XCircle, Sparkles, Loader2, Volume2, VolumeX } from "lucide-react";
+import { Heart, Timer, ArrowLeft, CheckCircle, XCircle, Sparkles, Loader2, Volume2, VolumeX, Zap } from "lucide-react";
 import { toast } from "sonner";
 import confetti from "canvas-confetti";
 import { motion, AnimatePresence } from "framer-motion";
