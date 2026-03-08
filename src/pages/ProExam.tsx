@@ -47,14 +47,28 @@ const ProExam = () => {
   if (!isPro) return <Navigate to="/" replace />;
 
   const generateExam = async () => {
-    if (!topic.trim()) { toast.error("اكتب الموضوع"); return; }
+    let examTopic = topic;
+    let examLevel = level;
+
+    if (!useManualTopic) {
+      // Curriculum-based
+      const stage = curriculum.find(s => s.id === selectedStage);
+      const year = stage?.years.find(y => y.id === selectedYear);
+      const subj = year?.subjects.find(s => s.id === selectedSubject);
+      if (!stage || !year || !subj) { toast.error("اختر المرحلة والسنة والمادة"); return; }
+      examTopic = `${subj.name} - ${year.name}`;
+      examLevel = stage.name;
+    } else {
+      if (!examTopic.trim()) { toast.error("اكتب الموضوع"); return; }
+    }
+
     setGenerating(true);
     try {
       const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-questions`;
       const resp = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` },
-        body: JSON.stringify({ topic, count, type: "multiple_choice", level, aiMode: "algerian" }),
+        body: JSON.stringify({ topic: examTopic, count, type: "multiple_choice", level: examLevel, aiMode: "algerian" }),
       });
       if (!resp.ok) { const err = await resp.json(); toast.error(err.error || "خطأ"); return; }
       const data = await resp.json();
@@ -64,6 +78,14 @@ const ProExam = () => {
       setAnswers({});
       setCorrections({});
       setSubmitted(false);
+      // Store topic for header display
+      if (!useManualTopic) {
+        const stage = curriculum.find(s => s.id === selectedStage);
+        const year = stage?.years.find(y => y.id === selectedYear);
+        const subj = year?.subjects.find(s => s.id === selectedSubject);
+        setTopic(`${subj?.name} - ${year?.name}`);
+        setLevel(stage?.name || level);
+      }
     } catch { toast.error("خطأ في الاتصال"); }
     finally { setGenerating(false); }
   };
