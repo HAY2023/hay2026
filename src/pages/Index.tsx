@@ -7,7 +7,7 @@ import StarsBackground from "@/components/StarsBackground";
 import {
   Brain, LogOut, Settings, Sparkles, Trophy, PenTool, Zap, Heart,
   GraduationCap, HelpCircle, User, BookOpen, Flame, Target,
-  TrendingUp, Clock, Star, Award, ChevronLeft, BarChart3, Calendar, ShoppingBag, Crown
+  TrendingUp, Clock, Star, Award, ChevronLeft, BarChart3, Calendar, ShoppingBag, Crown, Share2, Copy, Check
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import NotificationBell from "@/components/NotificationBell";
@@ -72,6 +72,8 @@ const Index = () => {
   const [streak, setStreak] = useState(0);
   const [xp, setXP] = useState(0);
   const [level, setLevel] = useState(1);
+  const [activeDays, setActiveDays] = useState(0);
+  const [copied, setCopied] = useState(false);
 
   const todayQuote = motivationalQuotes[new Date().getDate() % motivationalQuotes.length];
   const todayTip = dailyTips[new Date().getDate() % dailyTips.length];
@@ -151,6 +153,10 @@ const Index = () => {
           else break;
         }
         setStreak(currentStreak);
+
+        // Calculate unique active days
+        const uniqueDays = new Set(results.map(r => r.played_at.split("T")[0]));
+        setActiveDays(uniqueDays.size);
       }
     } catch (err) { console.error("Stats error:", err); }
   };
@@ -170,11 +176,31 @@ const Index = () => {
   const greeting = greetingHour < 12 ? "صباح الخير" : greetingHour < 18 ? "مساء الخير" : "مساء النور";
 
   const stats: QuickStat[] = [
+    { label: "أيام النشاط", value: activeDays, icon: <Calendar className="w-4 h-4" />, color: "text-purple-400" },
     { label: "الألعاب", value: totalGames, icon: <Target className="w-4 h-4" />, color: "text-primary" },
     { label: "المعدل", value: `${avgScore}%`, icon: <TrendingUp className="w-4 h-4" />, color: "text-green-400" },
     { label: "أفضل نتيجة", value: `${bestScore}%`, icon: <Star className="w-4 h-4" />, color: "text-yellow-400" },
-    { label: "أسئلتي", value: totalQuestions, icon: <BarChart3 className="w-4 h-4" />, color: "text-blue-400" },
   ];
+
+  const siteUrl = "https://hay2026.lovable.app";
+  const shareText = `🧠 أنا ألعب Quiz AI منذ ${activeDays} يوم! معدلي ${avgScore}% ومستواي ${level}. جرّب أنت أيضاً!`;
+
+  const handleShare = (platform: string) => {
+    const encoded = encodeURIComponent(shareText);
+    const encodedUrl = encodeURIComponent(siteUrl);
+    let url = "";
+    if (platform === "whatsapp") url = `https://wa.me/?text=${encoded}%20${encodedUrl}`;
+    else if (platform === "facebook") url = `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}&quote=${encoded}`;
+    else if (platform === "twitter") url = `https://twitter.com/intent/tweet?text=${encoded}&url=${encodedUrl}`;
+    else if (platform === "telegram") url = `https://t.me/share/url?url=${encodedUrl}&text=${encoded}`;
+    window.open(url, "_blank");
+  };
+
+  const copyInviteLink = () => {
+    navigator.clipboard.writeText(`${shareText}\n${siteUrl}`);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
     <div className="min-h-screen relative">
@@ -442,6 +468,35 @@ const Index = () => {
                 ))}
               </motion.div>
             )}
+          </motion.div>
+
+          {/* Share & Invite */}
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}
+            className="glass-card p-4">
+            <h3 className="text-sm font-heading font-bold text-foreground mb-3 flex items-center gap-2 justify-end">
+              شارك وادعُ أصدقاءك <Share2 className="w-4 h-4 text-primary" />
+            </h3>
+            <div className="flex items-center gap-2 justify-center mb-3">
+              {[
+                { platform: "whatsapp", icon: "💬", label: "واتساب", bg: "bg-green-500/10 hover:bg-green-500/20 border-green-500/20" },
+                { platform: "facebook", icon: "📘", label: "فيسبوك", bg: "bg-blue-500/10 hover:bg-blue-500/20 border-blue-500/20" },
+                { platform: "twitter", icon: "🐦", label: "تويتر", bg: "bg-sky-500/10 hover:bg-sky-500/20 border-sky-500/20" },
+                { platform: "telegram", icon: "✈️", label: "تيليجرام", bg: "bg-blue-400/10 hover:bg-blue-400/20 border-blue-400/20" },
+              ].map(s => (
+                <motion.button key={s.platform} whileTap={{ scale: 0.9 }}
+                  onClick={() => handleShare(s.platform)}
+                  className={`flex flex-col items-center gap-1 px-3 py-2 rounded-xl border transition-colors ${s.bg}`}>
+                  <span className="text-xl">{s.icon}</span>
+                  <span className="text-[10px] text-muted-foreground">{s.label}</span>
+                </motion.button>
+              ))}
+            </div>
+            <motion.div whileTap={{ scale: 0.97 }}>
+              <Button onClick={copyInviteLink} variant="outline" className="w-full rounded-xl gap-2 text-sm">
+                {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
+                {copied ? "تم النسخ!" : "نسخ رابط الدعوة"}
+              </Button>
+            </motion.div>
           </motion.div>
 
           {/* Footer Navigation */}
