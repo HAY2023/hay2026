@@ -7,7 +7,7 @@ import StarsBackground from "@/components/StarsBackground";
 import {
   Brain, LogOut, Settings, Sparkles, Trophy, PenTool, Zap, Heart,
   GraduationCap, HelpCircle, User, BookOpen, Flame, Target,
-  TrendingUp, Clock, Star, Award, ChevronLeft, BarChart3, Calendar, ShoppingBag, Crown
+  TrendingUp, Clock, Star, Award, ChevronLeft, BarChart3, Calendar, ShoppingBag, Crown, Share2, Copy, Check
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import NotificationBell from "@/components/NotificationBell";
