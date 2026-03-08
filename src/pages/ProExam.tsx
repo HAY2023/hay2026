@@ -173,27 +173,96 @@ const ProExam = () => {
             </div>
 
             <div className="space-y-3">
-              <Input value={topic} onChange={e => setTopic(e.target.value)}
-                placeholder="الموضوع (مثال: الحرب العالمية الأولى، الدوال العددية...)"
-                className="bg-secondary/50 text-right rounded-xl h-12" />
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-muted-foreground block mb-1">المستوى</label>
-                  <select value={level} onChange={e => setLevel(e.target.value)}
-                    className="w-full bg-secondary/50 border border-border/50 rounded-xl p-2.5 text-foreground text-right text-sm">
-                    <option value="ابتدائي">ابتدائي</option>
-                    <option value="متوسط">متوسط</option>
-                    <option value="ثانوي">ثانوي / بكالوريا</option>
-                    <option value="جامعي">جامعي</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs text-muted-foreground block mb-1">عدد الأسئلة</label>
-                  <Input type="number" value={count} onChange={e => setCount(parseInt(e.target.value) || 10)}
-                    min={3} max={30} className="bg-secondary/50 rounded-xl" />
-                </div>
+              {/* Toggle: Curriculum vs Manual */}
+              <div className="flex gap-2 rounded-xl overflow-hidden border border-border/50">
+                <button
+                  onClick={() => setUseManualTopic(false)}
+                  className={`flex-1 py-2.5 text-sm font-medium transition-colors ${!useManualTopic ? "bg-purple-600 text-white" : "bg-secondary/30 text-muted-foreground hover:text-foreground"}`}>
+                  📚 من المنهج الدراسي
+                </button>
+                <button
+                  onClick={() => setUseManualTopic(true)}
+                  className={`flex-1 py-2.5 text-sm font-medium transition-colors ${useManualTopic ? "bg-purple-600 text-white" : "bg-secondary/30 text-muted-foreground hover:text-foreground"}`}>
+                  ✏️ موضوع حر
+                </button>
               </div>
+
+              {useManualTopic ? (
+                <>
+                  <Input value={topic} onChange={e => setTopic(e.target.value)}
+                    placeholder="الموضوع (مثال: الحرب العالمية الأولى، الدوال العددية...)"
+                    className="bg-secondary/50 text-right rounded-xl h-12" />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs text-muted-foreground block mb-1">المستوى</label>
+                      <select value={level} onChange={e => setLevel(e.target.value)}
+                        className="w-full bg-secondary/50 border border-border/50 rounded-xl p-2.5 text-foreground text-right text-sm">
+                        <option value="ابتدائي">ابتدائي</option>
+                        <option value="متوسط">متوسط</option>
+                        <option value="ثانوي">ثانوي / بكالوريا</option>
+                        <option value="جامعي">جامعي</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground block mb-1">عدد الأسئلة</label>
+                      <Input type="number" value={count} onChange={e => setCount(parseInt(e.target.value) || 10)}
+                        min={3} max={30} className="bg-secondary/50 rounded-xl" />
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {/* Stage selector */}
+                  <div>
+                    <label className="text-xs text-muted-foreground block mb-1">المرحلة الدراسية</label>
+                    <select value={selectedStage}
+                      onChange={e => { setSelectedStage(e.target.value); setSelectedYear(""); setSelectedSubject(""); }}
+                      className="w-full bg-secondary/50 border border-border/50 rounded-xl p-2.5 text-foreground text-right text-sm">
+                      <option value="">-- اختر المرحلة --</option>
+                      {curriculum.map(s => (
+                        <option key={s.id} value={s.id}>{s.icon} {s.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Year selector */}
+                  {selectedStage && (
+                    <div>
+                      <label className="text-xs text-muted-foreground block mb-1">السنة الدراسية</label>
+                      <select value={selectedYear}
+                        onChange={e => { setSelectedYear(e.target.value); setSelectedSubject(""); }}
+                        className="w-full bg-secondary/50 border border-border/50 rounded-xl p-2.5 text-foreground text-right text-sm">
+                        <option value="">-- اختر السنة --</option>
+                        {curriculum.find(s => s.id === selectedStage)?.years.map(y => (
+                          <option key={y.id} value={y.id}>{y.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Subject selector */}
+                  {selectedYear && (
+                    <div>
+                      <label className="text-xs text-muted-foreground block mb-1">المادة</label>
+                      <select value={selectedSubject}
+                        onChange={e => setSelectedSubject(e.target.value)}
+                        className="w-full bg-secondary/50 border border-border/50 rounded-xl p-2.5 text-foreground text-right text-sm">
+                        <option value="">-- اختر المادة --</option>
+                        {curriculum.find(s => s.id === selectedStage)?.years.find(y => y.id === selectedYear)?.subjects.map(sub => (
+                          <option key={sub.id} value={sub.id}>{sub.icon} {sub.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Question count */}
+                  <div>
+                    <label className="text-xs text-muted-foreground block mb-1">عدد الأسئلة</label>
+                    <Input type="number" value={count} onChange={e => setCount(parseInt(e.target.value) || 10)}
+                      min={3} max={30} className="bg-secondary/50 rounded-xl" />
+                  </div>
+                </>
+              )}
 
               <div className="glass-card p-3 text-right text-xs text-muted-foreground space-y-1">
                 <p>📄 ورقة اختبار كاملة - جميع الأسئلة في صفحة واحدة</p>
