@@ -153,6 +153,10 @@ const Index = () => {
           else break;
         }
         setStreak(currentStreak);
+
+        // Calculate unique active days
+        const uniqueDays = new Set(results.map(r => r.played_at.split("T")[0]));
+        setActiveDays(uniqueDays.size);
       }
     } catch (err) { console.error("Stats error:", err); }
   };
