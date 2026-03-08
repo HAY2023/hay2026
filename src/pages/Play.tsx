@@ -371,7 +371,8 @@ const Play = () => {
             </motion.div>
           </div>
         </motion.div>
-      </div>
+        </div>
+      </>
     );
   }
 
