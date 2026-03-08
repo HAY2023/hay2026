@@ -4,43 +4,28 @@ import { useAuth } from "@/hooks/useAuth";
 import StarsBackground from "@/components/StarsBackground";
 import { Button } from "@/components/ui/button";
 import { curriculum } from "@/data/curriculum";
-import { ArrowRight, BookOpen, Loader2, Sparkles, ChevronLeft, FileText } from "lucide-react";
+import { ArrowRight, BookOpen, Loader2, Sparkles, ChevronLeft, ChevronDown, FileText } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import NotificationBell from "@/components/NotificationBell";
 import { toast } from "sonner";
 
-interface BookItem {
+interface Lesson {
+  number: number;
   title: string;
-  subject: string;
-  level: string;
-  year: string;
-  summary?: string;
-  loadingSummary?: boolean;
 }
-
-// Generate book list from curriculum
-const generateBooks = (): BookItem[] => {
-  const books: BookItem[] = [];
-  for (const stage of curriculum) {
-    for (const year of stage.years) {
-      for (const subj of year.subjects) {
-        books.push({
-          title: `كتاب ${subj.name} - ${year.name}`,
-          subject: subj.name,
-          level: stage.name,
-          year: year.name,
-        });
-      }
-    }
-  }
-  return books;
-};
 
 const Library = () => {
   const { user, isActivated, loading, profile } = useAuth();
   const navigate = useNavigate();
   const [selectedStage, setSelectedStage] = useState<string | null>(null);
   const [selectedYear, setSelectedYear] = useState<string | null>(null);
+  const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
+
+  // Lessons list per subject key
+  const [lessonsMap, setLessonsMap] = useState<Record<string, Lesson[]>>({});
+  const [loadingLessons, setLoadingLessons] = useState<string | null>(null);
+
+  // Summaries per lesson key
   const [summaries, setSummaries] = useState<Record<string, string>>({});
   const [loadingKey, setLoadingKey] = useState<string | null>(null);
 
@@ -52,31 +37,68 @@ const Library = () => {
   const stage = curriculum.find(s => s.id === selectedStage);
   const year = stage?.years.find(y => y.id === selectedYear);
 
-  const generateSummary = async (subjectName: string, yearName: string, levelName: string) => {
+  const fetchLessons = async (subjectName: string, yearName: string, levelName: string) => {
     const key = `${subjectName}-${yearName}`;
-    if (summaries[key]) return; // already generated
-    
+    if (lessonsMap[key]) {
+      setSelectedSubject(selectedSubject === key ? null : key);
+      return;
+    }
+
     if (!isPro) {
       toast.error("ملخصات AI متاحة فقط في نسخة PRO");
       return;
     }
+
+    setLoadingLessons(key);
+    try {
+      const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-book-summary`;
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({ subject: subjectName, year: yearName, level: levelName }),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.lessons) {
+          setLessonsMap(prev => ({ ...prev, [key]: data.lessons }));
+          setSelectedSubject(key);
+        } else {
+          toast.error("خطأ في جلب قائمة الدروس");
+        }
+      } else {
+        const errData = await resp.json().catch(() => ({}));
+        toast.error(errData.error || "خطأ في جلب قائمة الدروس");
+      }
+    } catch {
+      toast.error("خطأ في الاتصال");
+    }
+    setLoadingLessons(null);
+  };
+
+  const generateLessonSummary = async (subjectName: string, yearName: string, levelName: string, lessonNumber: number) => {
+    const key = `${subjectName}-${yearName}-lesson${lessonNumber}`;
+    if (summaries[key]) return;
 
     setLoadingKey(key);
     try {
       const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/generate-book-summary`;
       const resp = await fetch(url, {
         method: "POST",
-        headers: { 
-          "Content-Type": "application/json", 
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}` 
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
         },
-        body: JSON.stringify({ subject: subjectName, year: yearName, level: levelName }),
+        body: JSON.stringify({ subject: subjectName, year: yearName, level: levelName, lessonNumber }),
       });
       if (resp.ok) {
         const data = await resp.json();
         setSummaries(prev => ({ ...prev, [key]: data.summary }));
       } else {
-        toast.error("خطأ في توليد الملخص");
+        const errData = await resp.json().catch(() => ({}));
+        toast.error(errData.error || "خطأ في توليد الملخص");
       }
     } catch {
       toast.error("خطأ في الاتصال");
@@ -85,7 +107,8 @@ const Library = () => {
   };
 
   const goBack = () => {
-    if (selectedYear) { setSelectedYear(null); }
+    if (selectedSubject) { setSelectedSubject(null); }
+    else if (selectedYear) { setSelectedYear(null); }
     else if (selectedStage) { setSelectedStage(null); }
     else navigate("/");
   };
@@ -105,7 +128,7 @@ const Library = () => {
             </div>
             <div>
               <h1 className="text-xl font-heading font-bold gold-text">مكتبة الكتب المدرسية</h1>
-              <p className="text-xs text-muted-foreground">ملخصات AI لجميع الكتب الجزائرية</p>
+              <p className="text-xs text-muted-foreground">ملخصات AI لكل درس على حدة</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -119,12 +142,13 @@ const Library = () => {
         {/* Breadcrumb */}
         {selectedStage && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex items-center gap-2 mb-4 text-sm text-muted-foreground flex-wrap">
-            <button onClick={() => { setSelectedStage(null); setSelectedYear(null); }}
+            <button onClick={() => { setSelectedStage(null); setSelectedYear(null); setSelectedSubject(null); }}
               className="hover:text-primary transition-colors">المكتبة</button>
             {stage && (
               <span className="flex items-center gap-2">
                 <ChevronLeft className="w-3 h-3" />
-                <button onClick={() => setSelectedYear(null)} className={!selectedYear ? "text-primary font-medium" : "hover:text-primary transition-colors"}>
+                <button onClick={() => { setSelectedYear(null); setSelectedSubject(null); }}
+                  className={!selectedYear ? "text-primary font-medium" : "hover:text-primary transition-colors"}>
                   {stage.name}
                 </button>
               </span>
@@ -132,7 +156,10 @@ const Library = () => {
             {year && (
               <span className="flex items-center gap-2">
                 <ChevronLeft className="w-3 h-3" />
-                <span className="text-primary font-medium">{year.name}</span>
+                <button onClick={() => setSelectedSubject(null)}
+                  className={!selectedSubject ? "text-primary font-medium" : "hover:text-primary transition-colors"}>
+                  {year.name}
+                </button>
               </span>
             )}
           </motion.div>
@@ -148,7 +175,7 @@ const Library = () => {
                 </motion.div>
                 <h2 className="text-2xl font-heading font-bold gold-text mb-2">📚 مكتبة الكتب المدرسية</h2>
                 <p className="text-muted-foreground text-sm max-w-lg mx-auto">
-                  ملخصات ذكية بالذكاء الاصطناعي لجميع الكتب المدرسية الجزائرية
+                  ملخصات ذكية بالذكاء الاصطناعي لكل درس على حدة - اختر الدرس الذي تريد تلخيصه
                 </p>
               </div>
 
@@ -192,31 +219,34 @@ const Library = () => {
             </motion.div>
           )}
 
-          {/* Books/Subjects view */}
+          {/* Books/Subjects view with lesson-by-lesson summaries */}
           {selectedYear && year && stage && (
             <motion.div key="books" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -30 }}>
               <div className="space-y-3">
                 {year.subjects.map((subj) => {
-                  const key = `${subj.name}-${year.name}`;
-                  const summary = summaries[key];
-                  const isLoading = loadingKey === key;
+                  const subjKey = `${subj.name}-${year.name}`;
+                  const lessons = lessonsMap[subjKey];
+                  const isLoadingList = loadingLessons === subjKey;
+                  const isExpanded = selectedSubject === subjKey;
 
                   return (
                     <motion.div key={subj.id}
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       className="glass-card p-5 text-right">
-                      <div className="flex items-center justify-between mb-3">
+                      {/* Subject header */}
+                      <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           {isPro && (
                             <Button
                               size="sm"
-                              variant={summary ? "outline" : "default"}
-                              onClick={() => generateSummary(subj.name, year.name, stage.name)}
-                              disabled={isLoading || !!summary}
-                              className={`gap-1 rounded-xl text-xs ${!summary ? "bg-purple-600 hover:bg-purple-700 text-white" : ""}`}>
-                              {isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                              {summary ? "تم التلخيص" : "ملخص AI"}
+                              variant={lessons ? "outline" : "default"}
+                              onClick={() => fetchLessons(subj.name, year.name, stage.name)}
+                              disabled={isLoadingList}
+                              className={`gap-1 rounded-xl text-xs ${!lessons ? "bg-purple-600 hover:bg-purple-700 text-white" : ""}`}>
+                              {isLoadingList ? <Loader2 className="w-3 h-3 animate-spin" /> : 
+                                isExpanded ? <ChevronDown className="w-3 h-3" /> : <Sparkles className="w-3 h-3" />}
+                              {lessons ? (isExpanded ? "إخفاء الدروس" : "عرض الدروس") : "عرض دروس الكتاب"}
                             </Button>
                           )}
                         </div>
@@ -224,24 +254,66 @@ const Library = () => {
                           <div>
                             <h3 className="font-heading font-bold text-foreground">كتاب {subj.name}</h3>
                             <p className="text-xs text-muted-foreground">{year.name} - {stage.name}</p>
+                            {lessons && <p className="text-xs text-purple-400 mt-0.5">{lessons.length} درس</p>}
                           </div>
                           <span className="text-3xl">{subj.icon}</span>
                         </div>
                       </div>
 
-                      {/* Summary */}
-                      {summary && (
-                        <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}
-                          className="mt-3 p-4 rounded-xl bg-purple-500/5 border border-purple-500/20">
-                          <div className="flex items-center gap-2 mb-2 justify-end">
-                            <span className="text-xs font-heading text-purple-400">ملخص AI</span>
-                            <FileText className="w-3 h-3 text-purple-400" />
-                          </div>
-                          <p className="text-sm text-muted-foreground font-body leading-relaxed whitespace-pre-wrap">
-                            {summary}
-                          </p>
-                        </motion.div>
-                      )}
+                      {/* Lessons list */}
+                      <AnimatePresence>
+                        {isExpanded && lessons && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: "auto" }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="mt-4 space-y-2 overflow-hidden">
+                            {lessons.map((lesson) => {
+                              const lessonKey = `${subj.name}-${year.name}-lesson${lesson.number}`;
+                              const summary = summaries[lessonKey];
+                              const isLoading = loadingKey === lessonKey;
+
+                              return (
+                                <div key={lesson.number} className="border border-border/50 rounded-xl p-3">
+                                  <div className="flex items-center justify-between">
+                                    <Button
+                                      size="sm"
+                                      variant={summary ? "outline" : "secondary"}
+                                      onClick={() => generateLessonSummary(subj.name, year.name, stage.name, lesson.number)}
+                                      disabled={isLoading || !!summary}
+                                      className="gap-1 rounded-lg text-xs">
+                                      {isLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                                      {summary ? "تم ✓" : "لخّص"}
+                                    </Button>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-sm font-medium text-foreground">{lesson.title}</span>
+                                      <span className="text-xs text-muted-foreground bg-muted rounded-full w-6 h-6 flex items-center justify-center font-bold">
+                                        {lesson.number}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {/* Lesson summary */}
+                                  {summary && (
+                                    <motion.div
+                                      initial={{ opacity: 0, height: 0 }}
+                                      animate={{ opacity: 1, height: "auto" }}
+                                      className="mt-3 p-4 rounded-xl bg-purple-500/5 border border-purple-500/20">
+                                      <div className="flex items-center gap-2 mb-2 justify-end">
+                                        <span className="text-xs font-heading text-purple-400">ملخص الدرس {lesson.number}</span>
+                                        <FileText className="w-3 h-3 text-purple-400" />
+                                      </div>
+                                      <p className="text-sm text-muted-foreground font-body leading-relaxed whitespace-pre-wrap">
+                                        {summary}
+                                      </p>
+                                    </motion.div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
 
                       {!isPro && (
                         <p className="text-xs text-muted-foreground mt-2">🔒 ملخصات AI متاحة في نسخة PRO</p>
