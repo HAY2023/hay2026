@@ -56,6 +56,7 @@ const Achievements = () => {
         purchases: (purchasesRes.data || []).length,
         fastestGame,
       });
+      if (unlocked && unlocked.length > 0) setShowToast(true);
       setChecked(true);
     };
     check();
