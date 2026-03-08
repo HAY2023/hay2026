@@ -30,6 +30,8 @@ const Dashboard = () => {
   const [aiMode, setAiMode] = useState<"algerian" | "general">("algerian");
   const [aiLoading, setAiLoading] = useState(false);
 
+  const [seedingDemo, setSeedingDemo] = useState(false);
+
   const fetchAll = async () => {
     if (!user) return;
     const [c, q] = await Promise.all([
@@ -41,6 +43,28 @@ const Dashboard = () => {
   };
 
   useEffect(() => { if (user && isActivated) fetchAll(); }, [user, isActivated]);
+
+  const seedDemoQuestions = async () => {
+    if (!user || seedingDemo) return;
+    setSeedingDemo(true);
+    try {
+      const { data: cat } = await supabase.from("categories").insert({ name: "جغرافيا", icon: "🌍", color: "#2196F3", created_by: user.id }).select().single();
+      if (!cat) { toast.error("فشل إنشاء القسم"); return; }
+      const demoQuestions = [
+        { question_text: "ما هي عاصمة الجزائر؟", question_type: "multiple_choice", options: ["الجزائر", "وهران", "قسنطينة", "عنابة"], correct_answer: "الجزائر", time_limit: 20, category_id: cat.id, created_by: user.id },
+        { question_text: "ما هو أطول نهر في العالم؟", question_type: "multiple_choice", options: ["نهر النيل", "نهر الأمازون", "نهر المسيسيبي", "نهر اليانغتسي"], correct_answer: "نهر النيل", time_limit: 25, category_id: cat.id, created_by: user.id },
+        { question_text: "ما هي أكبر قارة في العالم من حيث المساحة؟", question_type: "multiple_choice", options: ["آسيا", "أفريقيا", "أوروبا", "أمريكا الشمالية"], correct_answer: "آسيا", time_limit: 20, category_id: cat.id, created_by: user.id },
+        { question_text: "ما هي أعلى قمة جبلية في الجزائر؟", question_type: "multiple_choice", options: ["قمة تاهات", "جبل شيليا", "جبل لالا خديجة", "جبل جرجرة"], correct_answer: "قمة تاهات", time_limit: 25, category_id: cat.id, created_by: user.id },
+        { question_text: "كم عدد ولايات الجزائر؟", question_type: "multiple_choice", options: ["58", "48", "44", "52"], correct_answer: "58", time_limit: 20, category_id: cat.id, created_by: user.id },
+        { question_text: "ما هو البحر الذي يحد الجزائر من الشمال؟", question_type: "multiple_choice", options: ["البحر الأبيض المتوسط", "البحر الأحمر", "المحيط الأطلسي", "البحر الأسود"], correct_answer: "البحر الأبيض المتوسط", time_limit: 20, category_id: cat.id, created_by: user.id },
+        { question_text: "ما هي الصحراء الكبرى؟", question_type: "text", options: null, correct_answer: "أكبر صحراء حارة في العالم", time_limit: 30, category_id: cat.id, created_by: user.id },
+        { question_text: "ما هي عاصمة مصر؟", question_type: "multiple_choice", options: ["القاهرة", "الإسكندرية", "الأقصر", "أسوان"], correct_answer: "القاهرة", time_limit: 20, category_id: cat.id, created_by: user.id },
+      ];
+      await supabase.from("questions").insert(demoQuestions);
+      toast.success("تم إضافة 8 أسئلة تجريبية في قسم جغرافيا 🌍");
+      fetchAll();
+    } catch { toast.error("حدث خطأ"); } finally { setSeedingDemo(false); }
+  };
 
   const addCategory = async () => {
     if (!newCat.name.trim() || !user) return;
