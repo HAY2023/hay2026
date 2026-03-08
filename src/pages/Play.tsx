@@ -183,15 +183,83 @@ const Play = () => {
     if (isCorrect) { handleCorrect(); } else { handleWrong(); }
   };
 
+  // Power-up sound effects
+  const playBoostSound = (type: "hint" | "extra_time" | "freeze" | "shield" | "retry") => {
+    try {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const osc2 = ctx.createOscillator();
+      const gain = ctx.createGain();
+      const gain2 = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc2.connect(gain2); gain2.connect(ctx.destination);
+      gain.gain.value = 0.12;
+      gain2.gain.value = 0.08;
+
+      if (type === "hint") {
+        // Magical sparkle: ascending arpeggio with shimmer
+        osc.type = "sine"; osc2.type = "triangle";
+        osc.frequency.value = 880; osc2.frequency.value = 1320;
+        osc.start(); osc2.start();
+        setTimeout(() => { osc.frequency.value = 1175; osc2.frequency.value = 1760; }, 80);
+        setTimeout(() => { osc.frequency.value = 1568; osc2.frequency.value = 2093; }, 160);
+        setTimeout(() => { osc.frequency.value = 2093; gain.gain.value = 0.06; }, 240);
+        setTimeout(() => { osc.stop(); osc2.stop(); ctx.close(); }, 400);
+      } else if (type === "extra_time") {
+        // Clock tick-tock then whoosh up
+        osc.type = "square"; osc2.type = "sine";
+        gain.gain.value = 0.08; gain2.gain.value = 0.1;
+        osc.frequency.value = 1200; osc2.frequency.value = 400;
+        osc.start(); osc2.start();
+        setTimeout(() => { osc.frequency.value = 800; }, 80);
+        setTimeout(() => { osc.frequency.value = 1200; }, 160);
+        setTimeout(() => { osc2.frequency.value = 600; osc.frequency.value = 1600; }, 240);
+        setTimeout(() => { osc2.frequency.value = 900; gain2.gain.value = 0.05; }, 340);
+        setTimeout(() => { osc.stop(); osc2.stop(); ctx.close(); }, 450);
+      } else if (type === "freeze") {
+        // Icy crystalline descending with reverb-like effect
+        osc.type = "sine"; osc2.type = "sine";
+        osc.frequency.value = 2400; osc2.frequency.value = 2600;
+        gain.gain.value = 0.1; gain2.gain.value = 0.06;
+        osc.start(); osc2.start();
+        setTimeout(() => { osc.frequency.value = 1800; osc2.frequency.value = 2000; }, 100);
+        setTimeout(() => { osc.frequency.value = 1200; osc2.frequency.value = 1400; gain.gain.value = 0.07; }, 200);
+        setTimeout(() => { osc.frequency.value = 800; osc2.frequency.value = 1000; gain.gain.value = 0.04; }, 350);
+        setTimeout(() => { osc.stop(); osc2.stop(); ctx.close(); }, 500);
+      } else if (type === "shield") {
+        // Powerful bass thump with metallic ring
+        osc.type = "sawtooth"; osc2.type = "triangle";
+        osc.frequency.value = 150; osc2.frequency.value = 1047;
+        gain.gain.value = 0.15; gain2.gain.value = 0.1;
+        osc.start(); osc2.start();
+        setTimeout(() => { gain.gain.value = 0.08; osc2.frequency.value = 1319; }, 100);
+        setTimeout(() => { gain.gain.value = 0.04; osc2.frequency.value = 1568; gain2.gain.value = 0.06; }, 200);
+        setTimeout(() => { gain2.gain.value = 0.03; }, 350);
+        setTimeout(() => { osc.stop(); osc2.stop(); ctx.close(); }, 500);
+      } else if (type === "retry") {
+        // Rewind/reverse swoosh
+        osc.type = "sawtooth"; osc2.type = "sine";
+        osc.frequency.value = 1500; osc2.frequency.value = 800;
+        gain.gain.value = 0.06; gain2.gain.value = 0.1;
+        osc.start(); osc2.start();
+        setTimeout(() => { osc.frequency.value = 1000; osc2.frequency.value = 600; }, 80);
+        setTimeout(() => { osc.frequency.value = 600; osc2.frequency.value = 400; }, 160);
+        setTimeout(() => { osc.frequency.value = 400; osc2.frequency.value = 600; }, 240);
+        setTimeout(() => { osc.frequency.value = 800; osc2.frequency.value = 1000; gain2.gain.value = 0.06; }, 320);
+        setTimeout(() => { osc.stop(); osc2.stop(); ctx.close(); }, 450);
+      }
+    } catch {}
+  };
+
   // Power-up handlers
   const useHint = async () => {
     if (hintUsed || showResult) return;
     const ok = await consumeItem("hint");
     if (!ok) { toast.error("ليس لديك تلميحات! اشترِ من المتجر 💡"); return; }
+    playBoostSound("hint");
     setHintUsed(true);
     const q = questions[current];
     if (q.question_type === "multiple_choice" && q.options) {
-      // Show hint: reveal first letter of correct answer
       const correct = q.correct_answer;
       setHintText(`التلميح: الإجابة تبدأ بـ "${correct.charAt(0)}..." 💡`);
     } else {
@@ -204,6 +272,7 @@ const Play = () => {
     if (showResult) return;
     const ok = await consumeItem("extra_time");
     if (!ok) { toast.error("ليس لديك وقت إضافي! ⏰"); return; }
+    playBoostSound("extra_time");
     setTimeLeft(prev => prev + 15);
     toast.success("+15 ثانية إضافية! ⏰");
   };
@@ -212,6 +281,7 @@ const Play = () => {
     if (showResult || timeFrozen) return;
     const ok = await consumeItem("freeze_time");
     if (!ok) { toast.error("ليس لديك تجميد وقت! ❄️"); return; }
+    playBoostSound("freeze");
     setTimeFrozen(true);
     toast.success("تم تجميد الوقت لـ 10 ثوانٍ! ❄️");
     setTimeout(() => setTimeFrozen(false), 10000);
@@ -221,6 +291,7 @@ const Play = () => {
     if (showResult || shieldActive) return;
     const ok = await consumeItem("shield");
     if (!ok) { toast.error("ليس لديك درع! 🛡️"); return; }
+    playBoostSound("shield");
     setShieldActive(true);
     toast.success("درع الحماية مفعّل! 🛡️");
   };
@@ -229,10 +300,11 @@ const Play = () => {
     if (!showResult || showResult !== "wrong" || retryUsed) return;
     const ok = await consumeItem("retry");
     if (!ok) { toast.error("ليس لديك إعادة محاولة! 🔄"); return; }
+    playBoostSound("retry");
     setRetryUsed(true);
     setShowResult(null);
     setAnswer("");
-    setLives(prev => prev + 1); // Restore the lost life
+    setLives(prev => prev + 1);
     setTimeLeft(questions[current]?.time_limit ?? 30);
     toast.success("إعادة المحاولة! 🔄");
   };
