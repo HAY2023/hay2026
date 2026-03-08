@@ -318,6 +318,7 @@ const Play = () => {
 
   if (gameOver) {
     const pct = Math.round((score / questions.length) * 100);
+    return (
       <>
         {showAchievementToast && newlyUnlocked.length > 0 && (
           <AchievementToast achievementKeys={newlyUnlocked} onDone={() => { setShowAchievementToast(false); clearNewlyUnlocked(); }} />
