@@ -7,11 +7,12 @@ import StarsBackground from "@/components/StarsBackground";
 import {
   Brain, LogOut, Settings, Sparkles, Trophy, PenTool, Zap, Heart,
   GraduationCap, HelpCircle, User, BookOpen, Flame, Target,
-  TrendingUp, Clock, Star, Award, ChevronLeft, BarChart3, Calendar
+  TrendingUp, Clock, Star, Award, ChevronLeft, BarChart3, Calendar, ShoppingBag
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import NotificationBell from "@/components/NotificationBell";
 import { Progress } from "@/components/ui/progress";
+import { getLevelFromXP, getXPForNextLevel, getXPForCurrentLevel, getLevelTitle, getLevelColor } from "@/hooks/useXP";
 
 interface Category {
   id: string;
