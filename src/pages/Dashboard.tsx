@@ -184,7 +184,13 @@ const Dashboard = () => {
               <div className="glass-card p-5 space-y-3">
                 <h3 className="font-heading font-bold text-foreground">إضافة سؤال جديد</h3>
                 {categories.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">أضف قسماً أولاً من تبويب "الأقسام"</p>
+                  <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground">أضف قسماً أولاً من تبويب "الأقسام"</p>
+                    <Button onClick={seedDemoQuestions} disabled={seedingDemo} className="w-full gap-2 rounded-xl bg-primary/20 hover:bg-primary/30 text-primary border border-primary/30">
+                      {seedingDemo ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                      {seedingDemo ? "جارٍ الإضافة..." : "🌍 إضافة أسئلة تجريبية (جغرافيا)"}
+                    </Button>
+                  </div>
                 ) : (
                   <>
                     <select value={newQ.catId || selectedCat} onChange={(e) => { setNewQ(p => ({ ...p, catId: e.target.value })); setSelectedCat(e.target.value); }}
