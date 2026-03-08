@@ -4,6 +4,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { calculateGameXP, awardXP } from "@/hooks/useXP";
 import { useInventory } from "@/hooks/useInventory";
+import { useAchievements } from "@/hooks/useAchievements";
+import AchievementToast from "@/components/AchievementToast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
